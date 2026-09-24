@@ -1,0 +1,8 @@
+/target/
+Cargo.lock
+.cargo/
+.codegraph/
+.zvec-grep/
+.idea/
+.vscode/
+*.swp

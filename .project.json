@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "rust-platform-libs",
+  "kind": "shared",
+  "profile": "rust-platform",
+  "lifecycle": "planning",
+  "verification": {
+    "command": "cargo test --workspace",
+    "gate_runtime": "driftwatchdog",
+    "evidence_status": "planned"
+  },
+  "deployment": {
+    "deployable": false,
+    "jenkins_job": null,
+    "compose_file": null
+  }
+}

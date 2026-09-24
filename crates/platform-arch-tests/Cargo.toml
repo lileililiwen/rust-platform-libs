@@ -1,0 +1,16 @@
+[package]
+name = "platform-arch-tests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Workspace-level architecture tests: dependency direction and forbidden-dep enforcement."
+
+[lints]
+workspace = true
+
+[dependencies]
+toml = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

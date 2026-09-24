@@ -1,0 +1,22 @@
+[package]
+name = "platform-audit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Normalized audit event types and sink trait."
+
+[lints]
+workspace = true
+
+[dependencies]
+platform-core = { path = "../platform-core" }
+platform-contracts = { path = "../platform-contracts" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+time = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
