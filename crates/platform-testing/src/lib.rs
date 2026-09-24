@@ -20,10 +20,12 @@
 #![forbid(unsafe_code)]
 
 pub mod clock;
+pub mod evaluator;
 pub mod fixtures;
 pub mod reasons;
 pub mod subject;
 
 pub use clock::FakeClock;
+pub use evaluator::{ScriptedEvaluatorError, ScriptedPermissionEvaluator};
 pub use reasons::assert_redacted;
 pub use subject::TestSubject;

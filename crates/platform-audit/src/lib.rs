@@ -21,10 +21,12 @@
 
 pub mod context;
 pub mod event;
+pub mod producers;
 pub mod sink;
 
 pub use context::{RedactedContext, RedactedContextError};
 pub use event::{
     AuditActor, AuditCategory, AuditEvent, AuditEventBuilder, AuditOutcome, AuditSubjectType,
 };
+pub use producers::{AuthenticationAuditor, PermissionAuditor, SessionAuditor};
 pub use sink::{AuditSink, NoopAuditSink, SinkError};

@@ -23,15 +23,21 @@
 #![forbid(unsafe_code)]
 
 pub mod error;
+pub mod evaluator;
 pub mod lifecycle;
 pub mod outcome;
 pub mod permission;
 pub mod session;
 pub mod subject;
 pub mod tenant;
+pub mod tenant_resolver;
 pub mod traits;
 
 pub use error::{IdentityError, IdentityFailure};
+pub use evaluator::{
+    AllowListEvaluator, DenyByDefaultEvaluator, PermissionError, PermissionEvaluation,
+    PermissionEvaluator,
+};
 pub use lifecycle::Lifecycle;
 pub use outcome::IdentityOutcome;
 pub use permission::{Permission, PermissionDecision, PermissionReason};
@@ -40,4 +46,5 @@ pub use subject::{
     Authentication, AuthenticationMethod, Subject, SubjectId, SubjectSnapshot, SubjectType,
 };
 pub use tenant::{Environment, IsolationLevel, Tenant, TenantContext, TenantId};
+pub use tenant_resolver::{NoTenantResolver, StaticTenantResolver, TenantResolver};
 pub use traits::{CurrentSubject, IdentityProvider, IdentityStore};
