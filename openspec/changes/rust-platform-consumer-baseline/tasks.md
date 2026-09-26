@@ -1,5 +1,27 @@
 # Tasks: A consumer baseline for the Rust platform
 
+## 0. Caveats and confirmations
+
+- [ ] **The MSRV is a policy decision, not a measurement.** Existing
+  `rust-version` values range from 1.74 to 1.85 and four repositories declare
+  none. Confirm the chosen MSRV with the maintainer; raising it later needs a
+  separate change and a migration note.
+- [ ] **Record environment-blocked checks.** If `cargo-deny` is unavailable, the
+  task is `BLOCKED` with the exact command and next action — never reported as
+  passing and never silently skipped.
+- [ ] **The 4→9 contract-family parity is out of scope.** It belongs to
+  `contracts-consumer-parity` in `platform-contracts`; do not expand this change
+  into it.
+- [ ] **Do not edit consumers.** `trailCrew`'s hand-written path dependency is the
+  only current consumer; migration is documented, not performed.
+- [ ] **Keep `publish = false`.** Registry publication is a separate decision.
+- [ ] **No silent lint allowances.** Any allow needed to make the baseline pass
+  must be recorded with a justification rather than added quietly.
+- [ ] **Preserve provider neutrality.** `platform-arch-tests` must keep passing;
+  no Axum, SQLx, OIDC/JWT or product dependency may enter a production crate.
+- [ ] **Stage only this change directory.** `.project.json` is already modified and
+  `.github/` is untracked; keep them out of the change's commits.
+
 ## 1. BFS — Baseline and impact coverage
 
 - [ ] Inventory the workspace `Cargo.toml`, the existing `[workspace.lints]`,
