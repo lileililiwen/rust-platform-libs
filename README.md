@@ -50,8 +50,9 @@ The verification command is `cargo test --workspace`. The full
 verification surface (recorded in `HANDOFF.md`) also includes
 `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets
 -- -D warnings`, `openspec validate --specs --strict --no-interactive`,
-and the in-tree 48-case cross-repository fixture parity walker in
-`crates/platform-contracts/tests/fixture_parity.rs`.
+and the in-tree 108-case cross-repository fixture parity walker in
+`crates/platform-contracts/tests/fixture_parity.rs` (9 of 9 roadmap
+contract families × 12 canonical cases).
 
 Build/test/skeleton success is not runtime or release evidence. Each
 completed OpenSpec spec/change requires exactly two commits: first the

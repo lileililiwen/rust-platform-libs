@@ -28,8 +28,9 @@ pub mod validate;
 pub use envelope::{parse_contract_identifier, ContractIdError, ContractVersion, Envelope};
 pub use payload::{
     AuditActor, AuditCategory, AuditEvent, AuditOutcome, Authentication, AuthenticationMethod,
-    Environment, IdentitySubject, IsolationLevel, PermissionDecision, PermissionReason, Readiness,
-    ReadinessCheck, ReadinessStatus, SubjectType, TenantContext,
+    Capability, Environment, EvidenceKind, GateCheck, GateResult, GateResultValue, IdentitySubject,
+    IsolationLevel, JobOutcome, JobResult, PermissionDecision, PermissionReason, Readiness,
+    ReadinessCheck, ReadinessStatus, ReleaseEvidence, Stability, SubjectType, TenantContext,
 };
 pub use registry::{ContractEntry, ContractRegistry, RegistryError};
 pub use validate::{

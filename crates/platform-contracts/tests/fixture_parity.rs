@@ -273,6 +273,66 @@ fn audit_event_fixtures_match() {
 }
 
 #[test]
+fn readiness_fixtures_match() {
+    let dir = platform_contracts_dir();
+    let registry = load_registry_or_fail(&dir);
+    let failures = walk_family("readiness", &dir, &registry);
+    assert!(
+        failures.is_empty(),
+        "readiness fixture mismatches:\n{}",
+        failures.join("\n")
+    );
+}
+
+#[test]
+fn gate_result_fixtures_match() {
+    let dir = platform_contracts_dir();
+    let registry = load_registry_or_fail(&dir);
+    let failures = walk_family("gate-result", &dir, &registry);
+    assert!(
+        failures.is_empty(),
+        "gate-result fixture mismatches:\n{}",
+        failures.join("\n")
+    );
+}
+
+#[test]
+fn job_outcome_fixtures_match() {
+    let dir = platform_contracts_dir();
+    let registry = load_registry_or_fail(&dir);
+    let failures = walk_family("job-outcome", &dir, &registry);
+    assert!(
+        failures.is_empty(),
+        "job-outcome fixture mismatches:\n{}",
+        failures.join("\n")
+    );
+}
+
+#[test]
+fn release_evidence_fixtures_match() {
+    let dir = platform_contracts_dir();
+    let registry = load_registry_or_fail(&dir);
+    let failures = walk_family("release-evidence", &dir, &registry);
+    assert!(
+        failures.is_empty(),
+        "release-evidence fixture mismatches:\n{}",
+        failures.join("\n")
+    );
+}
+
+#[test]
+fn capability_fixtures_match() {
+    let dir = platform_contracts_dir();
+    let registry = load_registry_or_fail(&dir);
+    let failures = walk_family("capability", &dir, &registry);
+    assert!(
+        failures.is_empty(),
+        "capability fixture mismatches:\n{}",
+        failures.join("\n")
+    );
+}
+
+#[test]
 fn readme_documented_families_all_covered() {
     // Smoke test: every family in the registry that has a fixtures
     // directory must be reachable. This catches registry drift.

@@ -29,11 +29,16 @@ the full set.
    `assert_redacted!`, and `ScriptedPermissionEvaluator`. There is
    no separate archive for this step; the test-only surface is
    covered by the two spec-synced changes above.
-4. `consumer-conformance-matrix` — **next** (per `HANDOFF.md`).
+4. `consumer-conformance-matrix` — **done** (archive
+   `openspec/changes/archive/2026-09-30-consumer-conformance-matrix/`).
    Adds the `readiness`, `gate-result`, `job-outcome`,
-   `release-evidence`, and `capability` fixture walkers so the
-   in-tree parity coverage moves from 4 of 9 contract families
-   toward the full set. New external dependencies require
+   `release-evidence`, and `capability` fixture walkers plus typed
+   Rust payloads for `gate-result`, `job-outcome`,
+   `release-evidence`, and `capability` (`Readiness` already
+   shipped), bringing in-tree parity coverage from 4 of 9 contract
+   families to 9 of 9 roadmap families. `public-portfolio-manifest`
+   (tenth registry family, Forge/Hugo owner, major version 1) stays
+   out of scope. New external dependencies require
    two-consumer evidence.
 4b. `rust-platform-consumer-baseline` — **done**. Committed
    `rustfmt.toml`, `clippy.toml`, `deny.toml`, and

@@ -14,15 +14,23 @@
 //! breaking change.
 
 pub mod audit_event;
+pub mod capability;
+pub mod gate_result;
 pub mod identity_subject;
+pub mod job_outcome;
 pub mod permission_decision;
 pub mod readiness;
+pub mod release_evidence;
 pub mod tenant_context;
 
 pub use audit_event::{AuditActor, AuditCategory, AuditEvent, AuditOutcome};
+pub use capability::{Capability, Stability};
+pub use gate_result::{GateCheck, GateResult, GateResultValue};
 pub use identity_subject::{Authentication, AuthenticationMethod, IdentitySubject, SubjectType};
+pub use job_outcome::{JobOutcome, JobResult};
 pub use permission_decision::{PermissionDecision, PermissionReason};
 pub use readiness::{Readiness, ReadinessCheck, ReadinessStatus};
+pub use release_evidence::{EvidenceKind, ReleaseEvidence};
 pub use tenant_context::{Environment, IsolationLevel, TenantContext};
 
 /// Optional RFC3339 timestamp string carried in payloads.
@@ -72,5 +80,29 @@ impl ContractPayload for AuditEvent {
 impl ContractPayload for Readiness {
     fn family() -> &'static str {
         "platform.readiness"
+    }
+}
+
+impl ContractPayload for GateResult {
+    fn family() -> &'static str {
+        "platform.gate-result"
+    }
+}
+
+impl ContractPayload for JobOutcome {
+    fn family() -> &'static str {
+        "platform.job-outcome"
+    }
+}
+
+impl ContractPayload for ReleaseEvidence {
+    fn family() -> &'static str {
+        "platform.release-evidence"
+    }
+}
+
+impl ContractPayload for Capability {
+    fn family() -> &'static str {
+        "platform.capability"
     }
 }
