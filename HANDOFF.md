@@ -1,6 +1,6 @@
 # Rust Platform Libraries Handoff
 
-current_spec: rust-platform-foundation, rust-identity-audit-permission
+current_spec: rust-platform-foundation, rust-identity-audit-permission, rust-platform-consumer-baseline
 
 ## Current state
 
@@ -89,6 +89,77 @@ and
 `openspec/changes/archive/2026-09-24-identity-audit-and-permission-contracts/`,
 and the synced specs are `openspec/specs/rust-platform-foundation/spec.md`
 and `openspec/specs/rust-identity-audit-permission/spec.md`.
+
+## Evidence — rust-platform-consumer-baseline (recorded 2026-09-30)
+
+The change is implemented and verified; the archive step is commit 1
+of the two-commit cadence below.
+
+What was added (no crate public API, spec, or consumer change):
+
+* `rustfmt.toml` — stable-only settings; `cargo fmt --check` is
+  warning-free on the pinned toolchain (nightly-only
+  `imports_granularity` / `group_imports` were tried and removed for
+  exactly this reason).
+* `clippy.toml` — `msrv = "1.75"` matching the declared MSRV.
+* `rust-toolchain.toml` — pin `channel = "1.95.0"`. The first choice,
+  `1.85.0`, could not build the workspace (`time 0.3.55` requires
+  rustc >= 1.88); the declared MSRV stays `1.75` per maintainer
+  decision and the effective 1.88 floor is recorded in
+  `docs/consumer-baseline.md` §2. Raising the declared MSRV is a
+  separate change with a migration note.
+* `deny.toml` — `cargo deny` baseline (permissive-license allowlist,
+  RustSec advisories, wildcard versions denied with
+  `allow-wildcard-paths = true` so intra-workspace path deps pass,
+  crates.io only). Passes with one standing warning (duplicate
+  `getrandom` 0.3.4/0.4.3 via `jsonschema` vs `uuid`); duplicates are
+  `warn`, not `deny`.
+* `.github/workflows/ci.yml` — extended from tests-only to
+  formatting, clippy `-D warnings`, `cargo deny check`, tests, and
+  `./scripts/conformance.sh`, all on the pinned toolchain (no
+  toolchain input; `rust-toolchain.toml` governs).
+* `docs/consumer-baseline.md` — the adoption recipe (in-workspace
+  path form, out-of-workspace versioned git form, MSRV policy, CI
+  table, harness proofs, non-goals).
+* `scripts/conformance.sh` — six proofs, all holding: pinned
+  toolchain identity, in-workspace fixture green with
+  workspace-relative paths only, out-of-workspace scratch crate
+  resolving/building/testing/formatting/linting clean under the
+  verbatim-copied baseline, and three negative fixtures failing
+  loudly with named causes (`unused-variables`, `requires rustc
+  1.99`, banned `serde`).
+* `tests/consumer-fixture` — workspace-member consumer proving the
+  path recipe end to end (`TestSubject` → `DenyByDefaultEvaluator` →
+  `PermissionAuditor` → `InMemoryAuditSink`, asserting
+  `Permission`/`Denied`).
+
+Verification outputs (pinned toolchain 1.95.0, all fresh this session):
+
+* `cargo test --workspace` → **91 passed, 0 failed** (90 prior + 1
+  fixture).
+* `cargo fmt --all -- --check` → clean.
+* `cargo clippy --workspace --all-targets -- -D warnings` → clean.
+* `cargo deny check` → advisories ok, bans ok, licenses ok, sources ok.
+* `./scripts/conformance.sh` → all proofs hold.
+* `node scripts/check-openspec-change-names.mjs` → ok.
+* `openspec validate --changes --strict --no-interactive` → 3/3 passed.
+* `openspec validate --specs --strict --no-interactive` → 2/2 passed.
+* `platform-arch-tests` passes unchanged (run inside `cargo test
+  --workspace`); `[workspace.lints]` untouched; `publish = false`
+  unchanged; no sibling repository touched.
+* Commit note: `.github/workflows/ci.yml` existed only as untracked
+  tests-only scaffolding; this change extends it to the enforced
+  baseline above and commits it. The pre-existing `.project.json`
+  modification stays out of this change's commits per the task
+  caveats.
+
+Evidence boundary for this change: the harness proves the recipe
+resolves, builds, tests, formats, lints, and fails loudly with named
+causes. It does not prove any consumer has adopted the baseline in
+production, and the out-of-workspace probe uses an absolute path
+dependency as an explicitly documented offline stand-in for the
+versioned git form (no registry or git remote exists in this
+environment).
 
 ## Evidence boundary
 
