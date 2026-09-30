@@ -1,6 +1,6 @@
 # Rust Platform Libraries Handoff
 
-current_spec: none — all OpenSpec changes archived (ai-provider-adapters was the last open proposal)
+current_spec: rust-platform-publication (planning-only author; release step BLOCKED on P6 owner approval) — seven OpenSpec changes archived (ai-provider-adapters was the last)
 
 ## Current state
 
