@@ -59,6 +59,20 @@ archived; the specs under `openspec/specs/` are the working state.
     (Resend/Brevo) stay deferred per the two-consumer rule; router,
     quota, templates, DKIM/IMAP, and consumer migrations are each
     their own future change.
+4d. `ai-provider-adapters` — **done**. New satellite crate
+    `platform-ai`: provider-neutral chat, structured, streaming, and
+    embedding contract plus `AiError` mapped onto shipped
+    `ErrorCategory` (AI-001, AI-002, AI-005); opt-in `openai-compat`
+    HTTP adapter (rustls only, SSE streaming, JSON-schema structured
+    output, tool calls; covers OpenAI, DeepSeek, Zhipu and any other
+    vendor that exposes the same wire shape; AI-003); opt-in native
+    `ollama` adapter over `/api/chat` NDJSON and `/api/embed`
+    (AI-004); and the named-satellite `platform-ai` row in the
+    `platform-arch-tests` allowlist (AI-006). Anthropic stays
+    deferred (zero implemented consumers). The extraction decision
+    was made after two consumers demonstrated a compatible AI
+    contract (chat + streaming + structured + embedding), paralleling
+    the `mailing-provider-adapters` precedent.
 5. `axum-web-adapters` — deferred. Opt-in web adapters land only
    after at least two real consumers agree on the contracts and
    an explicit OpenSpec change records the decision.

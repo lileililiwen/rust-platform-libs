@@ -218,3 +218,55 @@ lettre-free. The SMTP adapter refuses `Security::None` off-loopback
 at construction, and every `MailingError` maps onto a shipped
 `platform-core` `ErrorCategory` without leaking credentials, bodies,
 or recipient local-parts.
+
+## `platform-ai`: chat through the provider-neutral contract
+
+File: `crates/platform-ai/examples/ai_basics.rs`
+
+```rust
+use platform_ai::mock::{MockAi, ScriptedChat};
+use platform_ai::{
+    AiContext, AiProvider, ChatRequest, Content, FinishReason, Message, Role,
+};
+use platform_core::{CorrelationId, FixedClock};
+
+#[tokio::main(flavor = "current_thread")]
+async fn main() {
+    // Scripted mock proves the provider-neutral contract: it
+    // validates through the shared path and returns the queued
+    // response. No network, no cargo features required beyond
+    // `mock`. Async needs a runtime; the example uses tokio, exactly
+    // as a consumer would with its own runtime.
+    let mock = MockAi::new();
+    mock.script_chat(ScriptedChat::ok("hello back", FinishReason::Stop));
+
+    let request = ChatRequest::builder(Message::new(Role::User, Content::text("hi")))
+        .model("gpt-fixture")
+        .build()
+        .expect("valid request");
+
+    let clock = FixedClock::at_epoch();
+    let cx = AiContext::new(CorrelationId::new(), &clock);
+    let response = mock
+        .generate(&request, &cx)
+        .await
+        .expect("mock accepts");
+    assert_eq!(response.content(), Some("hello back"));
+    assert_eq!(response.finish(), FinishReason::Stop);
+    println!("model: {} -> {}", response.model(), response.model());
+}
+```
+
+The opt-in pieces live behind cargo features: `openai-compat`
+(`OpenAiCompatConfig` + `OpenAiCompatProvider`, rustls only,
+`/v1/chat/completions`, `/v1/embeddings`, SSE streaming, JSON-schema
+structured output, tool calls) and `ollama` (`OllamaConfig` +
+`OllamaProvider`, default loopback endpoint, NDJSON streaming, no
+credentials). The `mock` feature adds the in-crate `MockAi` so
+production crates can script outcomes without depending on the
+test-only `platform-testing` crate. Default features are empty, so
+the contract compiles reqwest-free and tokio-free. The OpenAI
+adapter refuses plain HTTP to non-loopback hosts at construction,
+and every `AiError` maps onto a shipped `platform-core`
+`ErrorCategory` without leaking API keys, prompts, completions, or
+raw response bodies.

@@ -134,16 +134,40 @@ fn only_allowlisted_satellites_directly_depend_on_lettre() {
             manifest.name
         );
     }
-    // The allowlist names a crate that actually exists and actually
-    // uses its allowance, so the rule cannot rot into a vacuous pass.
-    for (satellite, _) in SATELLITE_ALLOWLIST {
+    // The allowlist names a crate that actually exists and uses
+    // at least one of its allowlisted leaves, so the rule cannot
+    // rot into a vacuous pass.
+    for (satellite, allowed) in SATELLITE_ALLOWLIST {
         let manifest = manifests
             .iter()
             .find(|m| m.name == *satellite)
             .unwrap_or_else(|| panic!("allowlisted satellite {satellite} missing"));
+        let uses_allowance = allowed.iter().any(|leaf| {
+            manifest.dependencies.contains(*leaf) || manifest.dev_dependencies.contains(*leaf)
+        });
         assert!(
-            manifest.dependencies.contains("lettre"),
-            "allowlisted satellite {satellite} no longer uses lettre"
+            uses_allowance,
+            "allowlisted satellite {satellite} no longer uses any of its allowlisted leaves {allowed:?}"
+        );
+    }
+}
+
+#[test]
+fn ai_satellite_actually_depends_on_its_allowlisted_leaves() {
+    // Vacuous-pass guard: every allowance named in
+    // SATELLITE_ALLOWLIST for `platform-ai` must be a real direct
+    // dependency, so removing the rule does not silently leave the
+    // satellite on the list with nothing to enforce.
+    let ws = platform_arch_tests::workspace_root();
+    let manifests = read_manifests(&ws);
+    let ai = manifests
+        .iter()
+        .find(|m| m.name == "platform-ai")
+        .expect("platform-ai manifest present");
+    for leaf in ["reqwest", "tokio"] {
+        assert!(
+            ai.dependencies.contains(leaf) || ai.dev_dependencies.contains(leaf),
+            "platform-ai must depend on {leaf} (allowlisted satellite leaf rot check)"
         );
     }
 }

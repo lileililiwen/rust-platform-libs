@@ -48,12 +48,17 @@ pub const PRODUCTION_CRATES: &[&str] = &[
 ];
 
 /// Named satellite crates and the extra dependencies each one is
-/// explicitly allowed to reach. Today the only satellite is
+/// explicitly allowed to reach. The two satellites today are
 /// `platform-mailing` (SMTP mail delivery, extracted after three
-/// consumers demonstrated a compatible lettre contract). A crate not
-/// named here that reaches `lettre` or `tokio` is a violation until
-/// an explicit policy change names it.
-pub const SATELLITE_ALLOWLIST: &[(&str, &[&str])] = &[("platform-mailing", &["lettre", "tokio"])];
+/// consumers demonstrated a compatible lettre contract) and
+/// `platform-ai` (the provider-neutral AI capability contract plus
+/// opt-in OpenAI-compatible and ollama adapters). A crate not
+/// named here that reaches `lettre`, `reqwest`, or `tokio` is a
+/// violation until an explicit policy change names it.
+pub const SATELLITE_ALLOWLIST: &[(&str, &[&str])] = &[
+    ("platform-mailing", &["lettre", "tokio"]),
+    ("platform-ai", &["reqwest", "tokio", "futures"]),
+];
 
 /// Forbidden dependency crate names. A direct or transitive
 /// dependency on any of these in a foundation production crate is a
@@ -393,6 +398,51 @@ mod tests {
         assert_eq!(violations.len(), 1);
         assert!(violations[0].contains("platform-mailing"));
         assert!(violations[0].contains("axum"));
+    }
+
+    #[test]
+    fn ai_satellite_allowlist_permits_reqwest() {
+        // Compliant: `platform-ai` reaches its allowlisted leaves
+        // (reqwest, tokio, futures) plus non-forbidden helpers.
+        let ai: BTreeSet<String> = [
+            "reqwest",
+            "tokio",
+            "futures",
+            "async-stream",
+            "async-trait",
+            "serde",
+            "serde_json",
+            "thiserror",
+            "platform-core",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        assert!(
+            check_crate_policy("platform-ai", &ai).is_empty(),
+            "named ai satellite with its allowances must pass"
+        );
+        // The satellite reaching `lettre` (not on its allowlist)
+        // still fails: the allowlist is not a free pass.
+        let mut overreach = ai.clone();
+        overreach.insert("lettre".to_string());
+        let violations = check_crate_policy("platform-ai", &overreach);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].contains("platform-ai"));
+        assert!(violations[0].contains("lettre"));
+    }
+
+    #[test]
+    fn foundation_crate_cannot_reach_reqwest() {
+        // Synthesized graph: reqwest attached to a foundation crate
+        // (the rule must refuse even though `platform-ai` may use it).
+        let mut graph = BTreeSet::new();
+        graph.insert("reqwest".to_string());
+        graph.insert("serde".to_string());
+        let violations = check_crate_policy("platform-identity", &graph);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].contains("platform-identity"));
+        assert!(violations[0].contains("reqwest"));
     }
 
     #[test]

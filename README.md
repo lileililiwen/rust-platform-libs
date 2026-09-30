@@ -5,10 +5,11 @@ web, operator, and control-plane products. This is not an application
 framework and does not own product databases, users, migrations, or UI.
 
 The foundation, the second-layer identity/audit/permission surface, the
-operational payload surface, and the opt-in SMTP mailing satellite are
-implemented and spec-synced. Axum, SQLx, cookie, OIDC, HTTP mail
-provider adapters, and persistence remain deferred until real consumers
-demonstrate compatible contracts.
+operational payload surface, the opt-in SMTP mailing satellite, and the
+opt-in AI capability satellite are implemented and spec-synced. Axum,
+SQLx, cookie, OIDC, HTTP mail provider adapters, Anthropic, and
+persistence remain deferred until real consumers demonstrate compatible
+contracts.
 See `HANDOFF.md` for the current state and the next OpenSpec change.
 
 ## Crate matrix
@@ -26,6 +27,7 @@ them so a consumer never has to open a manifest.
 | `platform-testing` | Deterministic fakes, builders, and assertions for consumer test suites | test-only | `0.1.0` | `Apache-2.0` (workspace) | `false` | `1.75` | `2021` |
 | `platform-arch-tests` | Workspace-level dependency-direction tests | test-only | `0.1.0` | `Apache-2.0` (workspace) | `false` | `1.75` | `2021` |
 | `platform-mailing` | Provider-neutral mail send contract, opt-in lettre SMTP adapter (`smtp-lettre`), deterministic mock (`mock`) | satellite (production, opt-in; default features empty) | `0.1.0` | `Apache-2.0` (workspace) | `false` | `1.75` | `2021` |
+| `platform-ai` | Provider-neutral AI capability contract (`AiProvider`, `EmbeddingProvider`, `ChatRequest`, `StreamChunk`, `AiError`); opt-in OpenAI-compatible HTTP adapter (`openai-compat`), native ollama adapter (`ollama`), and deterministic in-crate mock (`mock`) | satellite (production, opt-in; default features empty) | `0.1.0` | `Apache-2.0` (workspace) | `false` | `1.75` | `2021` |
 
 All crates are version `0.1.0` and `publish = false`: nothing here is
 published to a registry. Depending on a crate means a path or git
@@ -85,9 +87,10 @@ that recipe; follow it verbatim instead of forking it.
   read the `Cargo.lock` and assert no foundation production crate (directly or
   transitively) depends on `axum`, `sqlx`, `cookie`, `jsonwebtoken`,
   `openidconnect`, `oauth2`, `reqwest`, `lettre`, `tokio`, or `platform-testing`.
-  The named satellite `platform-mailing` alone may reach `lettre`/`tokio`
-  through an explicit allowlist; any other crate reaching them fails until a
-  policy change names it.
+  The named satellites `platform-mailing` and `platform-ai` are each
+  explicitly allowlisted: `platform-mailing` may reach `lettre`/`tokio`;
+  `platform-ai` may reach `reqwest`/`tokio`/`futures`. Any other crate
+  reaching them fails until a policy change names it.
 - `platform-mailing` — provider-neutral `EmailAddress`, `EmailMessage`,
   `Body`, `AttachmentRef`, `MailTransport`, `SendContext`,
   `DeliveryReceipt`, and `MailingError` (every variant mapped onto a shipped
@@ -97,6 +100,19 @@ that recipe; follow it verbatim instead of forking it.
   native-tls); the `mock` feature adds the scriptable `MockTransport` so
   production crates never touch `platform-testing`. No retry, queue,
   persistence, templates, or HTTP provider adapters.
+- `platform-ai` — provider-neutral `ChatRequest`, `ChatResponse`,
+  `StreamChunk`, `Embedding`, `Message`, `ToolDefinition`, `ToolCall`,
+  `GenerationOptions`, `Capabilities`, `ProviderInfo`, `AiContext`, and
+  `AiError` (every variant mapped onto a shipped `platform-core`
+  `ErrorCategory`, redacted display; no key/prompt/completion leaks in
+  `Display`). The `openai-compat` feature adds `OpenAiCompatConfig` and
+  `OpenAiCompatProvider` (rustls only, no native-tls; SSE streaming;
+  JSON-schema structured output; loopback-or-https `base_url` only); the
+  `ollama` feature adds `OllamaConfig` and `OllamaProvider` (NDJSON
+  streaming, default loopback endpoint, no credentials); the `mock`
+  feature adds `MockAi` so production crates can script outcomes
+  without touching `platform-testing`. No Anthropic, no retry, no
+  agent loop, no local token estimation.
 
 ## Deferred
 
@@ -104,9 +120,11 @@ Axum, SQLx, cookie, OIDC, universal login pages, dashboards, product
 entities, migrations, provider credentials, billing semantics, and
 deployment automation remain owned by consumers. HTTP mail provider
 adapters (Resend/Brevo: one consumer — the two-consumer rule says wait),
-router/quota/rate-limit, templates, DKIM/IMAP, and persistence adapters
+router/quota/rate-limit, templates, DKIM/IMAP, persistence adapters,
+and the Anthropic provider adapter (zero implemented consumers)
 land after compatible-contract evidence exists and an explicit OpenSpec
-change records the decision. SMTP delivery is the one shipped satellite;
+change records the decision. SMTP delivery and the
+OpenAI-compatible + ollama AI surface are the two shipped satellites;
 the foundation crates stay provider-neutral behind the trait surface.
 
 ## Verification
