@@ -1,6 +1,6 @@
 # Rust Platform Libraries Handoff
 
-current_spec: rust-platform-foundation, rust-identity-audit-permission, rust-platform-consumer-baseline, readiness
+current_spec: none — all OpenSpec changes archived (mailing-provider-adapters was the last open proposal)
 
 ## Current state
 
@@ -287,6 +287,120 @@ path-dependency recipe, or that the snippets stay compiling under
 a future API — that is what `cargo test --workspace` guards on
 every run.
 
+## Evidence — mailing-provider-adapters (recorded 2026-09-30)
+
+The change is implemented, archived to
+`openspec/changes/archive/2026-09-30-mailing-provider-adapters/`,
+and spec-synced into `openspec/specs/platform-mailing/spec.md` (4
+requirements / 10 scenarios, plus a `## Purpose` section added at
+sync time because strict spec validation requires it, as with
+`readiness`). It was the last open proposal: `openspec/changes/`
+now holds only `archive/`.
+
+What was added (no `platform-core|contracts|identity|audit|testing`
+source or public-API change; no sibling edit; `publish = false`
+unchanged):
+
+* `crates/platform-mailing/` — `Cargo.toml` (default features
+  empty; `mock` and `smtp-lettre` opt-in; lettre/tokio optional),
+  `src/lib.rs`, `src/types.rs` (`EmailAddress` display/bare parse
+  with 254-byte / control-char / empty-local / whitespace limits,
+  `EmailMessage` builder enforcing 1..=50 `to`, ≤50 total
+  recipients, ≤998-char CR/LF-free subject, text-and/or-html `Body`
+  ≤5 MiB, `AttachmentRef` by reference), `src/error.rs`
+  (`MailingError` 7 variants, total `category()` match onto the
+  frozen `ErrorCategory` with no wildcard arm, `to_safe_error()`,
+  `scrub_addresses` redaction), `src/transport.rs`
+  (`MailTransport` via async-trait for `dyn` on 1.75,
+  `SendContext` with `CorrelationId` + `&dyn Clock`,
+  `DeliveryReceipt` with clock-stamped `SentAt`),
+  `src/mock.rs` (feature `mock`: scripted accept/fail outcomes,
+  `Mutex` script, default-accept, timestamps only from the
+  injected clock), `src/smtp.rs` (feature `smtp-lettre`:
+  `SmtpTransportConfig` with loopback-only `Security::None`,
+  `Secret`-wrapped credentials, 30 s default timeout;
+  `LettreSmtpTransport` over `AsyncSmtpTransport<Tokio1Executor>`
+  with rustls only; Bcc in envelope, stripped from wire headers by
+  lettre's default `drop_bcc`), `tests/mail_mocks.rs`,
+  `tests/mail_error_mapping.rs` (incl. the manifest-shape test
+  proving lettre/tokio optional and default features empty),
+  `examples/send_via_stub.rs` (default-features-clean stub send,
+  executed OK).
+* `crates/platform-arch-tests/` — the rule is now the pure
+  function `check_crate_policy(crate, transitive-graph)` with the
+  named-satellite table `SATELLITE_ALLOWLIST`
+  (`platform-mailing → lettre, tokio`); `lettre` joined
+  `FORBIDDEN_DEPS`/`DIRECT_FORBIDDEN_DEPS` for the four foundation
+  crates; new unit tests for the allowlist pass, the synthesized
+  `platform-identity`+lettre violation, and the unknown-satellite
+  denial; the integration test applies the same pure rule to the
+  real lockfile for foundation + satellite and asserts only the
+  allowlisted satellite declares lettre.
+* Workspace `Cargo.toml` — member registration plus
+  `async-trait 0.1`, `tokio 1` (`net`, `time`, plus `rt`,
+  `macros` for test/example runtimes), `lettre 0.11`
+  (`builder`, `smtp-transport`, `tokio1`, `tokio1-rustls`,
+  `rustls-tls`; no native-tls).
+* `README.md` (mailing matrix row, satellite arch-test wording,
+  deferred list now names HTTP mail APIs as the remaining wait),
+  `ROADMAP.md` (stale "two changes done" header rewritten, step
+  4c recorded), `docs/usage.md` + example (byte-identical,
+  script-verified).
+
+Verification outputs (all fresh this session):
+
+* `cargo test --workspace` → **123 passed, 0 failed** (104 prior
+  + 11 mailing lib + 4 mapping + 3 arch unit + 1 arch
+  integration).
+* `cargo test -p platform-mailing --no-default-features` → 15
+  passed (11 + 4); `--features smtp-lettre,mock` → 23 passed
+  (17 + 4 + 2).
+* `cargo tree -p platform-mailing --no-default-features
+  --edges normal` shows no lettre/tokio edge; with
+  `smtp-lettre,mock` both resolve (lettre 0.11.23, tokio 1.53.1).
+* Refused-connection probe (127.0.0.1 closed port, no external
+  network) returns `TransportUnavailable` through the real lettre
+  error path.
+* `cargo fmt --all -- --check` → clean; `git diff --check` →
+  clean.
+* `cargo clippy --workspace --all-targets -- -D warnings` →
+  clean (one rename: builder `to_many` → `extend_to` for
+  `wrong_self_convention`).
+* `cargo deny check` → advisories ok, bans ok, licenses ok,
+  sources ok (standing unmatched-allowlist warnings only).
+* `./scripts/conformance.sh` → all proofs hold.
+* `node scripts/check-openspec-change-names.mjs` → ok.
+* `openspec validate --changes --strict --no-interactive` → no
+  active changes remain (archive complete).
+* `openspec validate --specs --strict --no-interactive` → 5/5
+  passed (new `platform-mailing`: 4 requirements / 10
+  scenarios).
+* `cargo build --examples --workspace` → clean; all five
+  examples executed directly (4 prior + `send_via_stub`) → ran
+  OK. `platform-arch-tests` green, so no new dependency leaked
+  into a foundation crate.
+
+Design-ledger deviations recorded (all compile-needs, no scope
+change): lettre needs the `builder` feature (message rendering)
+and the `tokio1-rustls` bridge (lettre compile-errors on
+`tokio1`+`rustls` without it) beyond the proposal's three
+features; workspace tokio gains `rt`+`macros` (async tests and
+the example need a runtime); `lettre::transport::smtp::ErrorKind`
+does not exist as a public type (`Kind` is `pub(crate)` with
+predicate accessors only), so the total mapping is factored as
+`classify()` + `from_class()` over `SmtpFailureClass::ALL`
+(6 classes, exhaustive match, enumerated test) instead of an
+enum match — the mapping table in design §5 is otherwise
+unchanged and `ErrorCategory` stays frozen per L3.
+
+Evidence boundary for this change: the refused-connection probe
+proves the unavailable branch against a live (local) failure;
+the other five failure classes are proven through the
+exhaustive classify/map unit test, not against live servers. No
+consumer has migrated (alltools, rust-ecommerce, openpanel keep
+their own plumbing until their own OpenSpec changes), and no
+real SMTP delivery is claimed.
+
 ## Evidence boundary
 
 The 90 unit and integration tests, the 48-case cross-repository
@@ -329,12 +443,16 @@ In particular:
 
 ## Next action
 
-The post-mvp-readiness change is done (matrix, compiling examples,
-license, adoption guide; spec `openspec/specs/readiness/spec.md`).
-One drafted proposal remains open in-tree and untouched by this
-change: `mailing-provider-adapters`. The repo owner selects whether
-it becomes the next active change and records it in the
-`current_spec` pointer above before implementation; until then the
-foundation plus the second-layer permission / audit / tenant helpers
-plus the full operational payload surface plus the readiness docs
-are the working state.
+All OpenSpec changes are implemented, archived, and spec-synced
+(`openspec/specs/`: `rust-platform-foundation`,
+`rust-identity-audit-permission`, `rust-platform-consumer-baseline`,
+`readiness`, `platform-mailing`; `openspec/changes/` holds only
+`archive/`). No proposal remains open. The remaining work is
+repository hygiene on `main` — stale-doc sweep, `.gitignore`
+adaptation, and committing the pre-existing `.project.json`
+metadata modification — followed by per-consumer adoption changes
+(alltools, rust-ecommerce, openpanel) in their own repositories.
+Until then the foundation plus the second-layer permission / audit /
+tenant helpers plus the full operational payload surface plus the
+readiness docs plus the SMTP mailing satellite are the working
+state.
