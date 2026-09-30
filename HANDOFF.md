@@ -4,7 +4,7 @@ current_spec: none — all OpenSpec changes archived (mailing-provider-adapters 
 
 ## Current state
 
-Two OpenSpec changes are **implemented, archived, and
+Six OpenSpec changes are **implemented, archived, and
 spec-synced** in this repository.
 
 1. `rust-platform-foundation-and-contracts` (archived on 2026-09-24
@@ -14,10 +14,22 @@ spec-synced** in this repository.
    2026-09-24 to
    `openspec/changes/archive/2026-09-24-identity-audit-and-permission-contracts/`,
    spec at `openspec/specs/rust-identity-audit-permission/spec.md`).
+3. `rust-platform-consumer-baseline` (archived on 2026-09-30 to
+   `openspec/changes/archive/2026-09-30-rust-platform-consumer-baseline/`,
+   spec at `openspec/specs/rust-platform-consumer-baseline/spec.md`).
+4. `consumer-conformance-matrix` (archived on 2026-09-30 to
+   `openspec/changes/archive/2026-09-30-consumer-conformance-matrix/`,
+   spec synced into `openspec/specs/rust-platform-foundation/spec.md`).
+5. `post-mvp-readiness` (archived on 2026-09-30 to
+   `openspec/changes/archive/2026-09-30-post-mvp-readiness/`,
+   spec at `openspec/specs/readiness/spec.md`).
+6. `mailing-provider-adapters` (archived on 2026-09-30 to
+   `openspec/changes/archive/2026-09-30-mailing-provider-adapters/`,
+   spec at `openspec/specs/platform-mailing/spec.md`).
 
 What is in the tree:
 
-* `Cargo.toml` — workspace with six crates:
+* `Cargo.toml` — workspace with seven crates:
   * `platform-core` — bounded strings, opaque `Id<T>`, `Clock` trait
     plus `SystemClock` / `FixedClock`, `CorrelationId`, `Secret<T>`
     redaction wrapper, and the `ErrorCategory` / `SafeError` model.
@@ -43,10 +55,20 @@ What is in the tree:
     MUST NOT depend on this crate; `platform-arch-tests` enforces
     it.
   * `platform-arch-tests` — workspace-level dependency-direction
-    tests that read the `Cargo.lock` and assert no production crate
-    (directly or transitively) depends on `axum`, `sqlx`, `cookie`,
-    `jsonwebtoken`, `openidconnect`, `oauth2`, `reqwest`, `tokio`, or
-    `platform-testing`.
+    tests that read the `Cargo.lock` and assert no foundation
+    production crate (directly or transitively) depends on `axum`,
+    `sqlx`, `cookie`, `jsonwebtoken`, `openidconnect`, `oauth2`,
+    `reqwest`, `lettre`, `tokio`, or `platform-testing`, while the
+    named satellite `platform-mailing` alone may reach
+    `lettre`/`tokio` through an explicit allowlist.
+  * `platform-mailing` — satellite (production, opt-in) mail send
+    contract: `EmailAddress`, `EmailMessage`, `Body`,
+    `AttachmentRef`, `MailTransport`, `SendContext`,
+    `DeliveryReceipt`, `MailingError` (frozen-category mapping,
+    redacted display), the `smtp-lettre` adapter
+    (`SmtpTransportConfig`, `LettreSmtpTransport`, rustls only),
+    and the `mock` feature's `MockTransport`. No retry, queue,
+    persistence, templates, or HTTP provider adapters.
 * `crates/platform-contracts/tests/fixture_parity.rs` — the
   cross-repository fixture walker. The test resolves the live
   `platform-contracts` repository via `PLATFORM_CONTRACTS_DIR` (or
@@ -403,24 +425,25 @@ real SMTP delivery is claimed.
 
 ## Evidence boundary
 
-The 90 unit and integration tests, the 48-case cross-repository
-fixture parity walk, the dependency-direction lockfile check, the
-`cargo clippy` clean run, and the strict `openspec validate` prove
-that the **wire-format and crate-shape** of the foundation plus
-the second-layer permission / audit / tenant helper surface is
-consistent, machine-checkable, and provider-neutral. They do not
-prove that any consumer (`openaccounting`, `rust-ecommerce`,
-`hookit`, `openpanel`, `vowra`, or a future Rust service) has
-adopted these crates in production; that evidence will come from
-each consumer's own OpenSpec change.
+The 123 workspace tests, the 108-case × 9-family
+cross-repository fixture parity walk, the dependency-direction
+lockfile oracle (foundation crates plus the named-satellite
+allowlist), the `cargo clippy` clean run, and the strict `openspec
+validate` prove that the **wire-format and crate-shape** of the
+foundation plus the second-layer permission / audit / tenant helper
+surface plus the operational payloads plus the SMTP mailing
+satellite is consistent, machine-checkable, and provider-neutral.
+They do not prove that any consumer (`openaccounting`,
+`rust-ecommerce`, `hookit`, `openpanel`, `vowra`, or a future Rust
+service) has adopted these crates in production; that evidence will
+come from each consumer's own OpenSpec change.
 
 In particular:
 
-* Only 4 of the 9 language-neutral contract families are exercised
-  in the in-tree parity walker. The remaining 5 (`readiness`,
-  `gate-result`, `job-outcome`, `release-evidence`, `capability`)
-  are part of the next consumer-conformance-matrix change; the
-  foundation does not claim 9-family parity today.
+* All 9 roadmap contract families are exercised in the in-tree
+  parity walker. `platform.public-portfolio-manifest` (tenth
+  registry family, Forge/Hugo owner, major version 1) stays out of
+  scope.
 * The fixture parity proves the Rust validator agrees with the
   language-neutral one on documents that already conform to the
   schema. It does not prove that the Rust types are semantically
@@ -428,9 +451,11 @@ In particular:
   audit logic; that is the application-owned side of the boundary
   described in `crates/platform-identity/src/lib.rs`.
 * The dependency-direction test forbids `axum`, `sqlx`, `cookie`,
-  `jsonwebtoken`, `openidconnect`, `oauth2`, `reqwest`, `tokio`, and
-  any product crate in production crates. It does not assert that
-  the application that adopts the foundation is itself provider-
+  `jsonwebtoken`, `openidconnect`, `oauth2`, `reqwest`, `lettre`,
+  `tokio`, and any product crate in the four foundation crates,
+  while the named-satellite allowlist grants `lettre`/`tokio` to
+  `platform-mailing` alone. It does not assert that the
+  application that adopts the foundation is itself provider-
   neutral; applications may pull in any framework they want behind
   the platform's trait surface.
 * The `AllowListEvaluator` is the smallest non-trivial reference

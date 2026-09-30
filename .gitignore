@@ -1,4 +1,7 @@
-/target/
+# Build output (any level: workspace target plus scratch-consumer targets).
+target/
+# Library workspace: the lockfile is generated locally (platform-arch-tests
+# reads it) and stays untracked.
 Cargo.lock
 .cargo/
 .codegraph/
@@ -6,3 +9,10 @@ Cargo.lock
 .idea/
 .vscode/
 *.swp
+# rustfmt / editor backups.
+*.rs.bk
+# Merge-conflict artifacts.
+*.orig
+*.rej
+# macOS dev matrices (see mailing design: Linux/macOS).
+.DS_Store
