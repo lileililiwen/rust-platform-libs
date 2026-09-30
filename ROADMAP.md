@@ -3,8 +3,11 @@
 The roadmap is the sequence of OpenSpec changes that build out the
 foundation plus the application-level helpers every consumer needs.
 The foundation, identity/audit/permission, consumer-baseline,
-conformance-matrix, readiness, and mailing changes are done and
-archived; the specs under `openspec/specs/` are the working state.
+conformance-matrix, readiness, mailing, AI, and registry-publication
+pipeline changes are done and archived; the registry-publication
+release itself is BLOCKED on owner approval (tracked in
+`docs/publication.md`). The specs under `openspec/specs/` are the
+working state.
 
 ## Dependency order
 
@@ -73,6 +76,29 @@ archived; the specs under `openspec/specs/` are the working state.
     was made after two consumers demonstrated a compatible AI
     contract (chat + streaming + structured + embedding), paralleling
     the `mailing-provider-adapters` precedent.
+4e. `registry-publication` — **done (pipeline); release BLOCKED on
+    P6 owner approval**. Workspace-level `publish = true` with
+    `platform-arch-tests` keeping an explicit `publish = false`
+    override; per-crate registry metadata
+    (`repository`/`homepage`/`documentation`/`keywords`/`categories`/
+    `exclude`); inter-crate deps in the registry-addressable
+    `{ path = …, version = … }` form so `cargo publish` rewrites
+    path deps to version requirements. `.github/workflows/publish.yml`
+    is tag-gated (`v*` only), refuses without the
+    `PUBLICATION-APPROVED` marker and the `CARGO_REGISTRY_TOKEN`
+    secret, fails on tag-vs-workspace version mismatch before any
+    publish step, publishes in `.publish-order` order with 404
+    pre-flight, propagation poll, and skip-existing idempotence.
+    `docs/publication.md` defines the lockstep / pre-1.0 / yank /
+    token policy. The first `v0.1.0` release is BLOCKED on the
+    two preconditions in `docs/publication.md` §Pre-publish
+    checklist: the GitHub-publication precondition (which will
+    set the real `repository` URL via the workspace-governance
+    `scripts/github_metadata.py` flow) and the owner-added
+    `PUBLICATION-APPROVED` marker. Build/test/skeleton success
+    is not release evidence; the actual `cargo publish` runs
+    in CI on the `v0.1.0` tag and is recorded in HANDOFF as
+    release evidence at that time.
 5. `axum-web-adapters` — deferred. Opt-in web adapters land only
    after at least two real consumers agree on the contracts and
    an explicit OpenSpec change records the decision.

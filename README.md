@@ -10,6 +10,9 @@ opt-in AI capability satellite are implemented and spec-synced. Axum,
 SQLx, cookie, OIDC, HTTP mail provider adapters, Anthropic, and
 persistence remain deferred until real consumers demonstrate compatible
 contracts.
+The registry-publication pipeline is implemented; the first
+`v0.1.0` release is BLOCKED on the owner approval tracked in
+`docs/publication.md` §Pre-publish checklist.
 See `HANDOFF.md` for the current state and the next OpenSpec change.
 
 ## Crate matrix
@@ -29,8 +32,16 @@ them so a consumer never has to open a manifest.
 | `platform-mailing` | Provider-neutral mail send contract, opt-in lettre SMTP adapter (`smtp-lettre`), deterministic mock (`mock`) | satellite (production, opt-in; default features empty) | `0.1.0` | `Apache-2.0` (workspace) | `false` | `1.75` | `2021` |
 | `platform-ai` | Provider-neutral AI capability contract (`AiProvider`, `EmbeddingProvider`, `ChatRequest`, `StreamChunk`, `AiError`); opt-in OpenAI-compatible HTTP adapter (`openai-compat`), native ollama adapter (`ollama`), and deterministic in-crate mock (`mock`) | satellite (production, opt-in; default features empty) | `0.1.0` | `Apache-2.0` (workspace) | `false` | `1.75` | `2021` |
 
-All crates are version `0.1.0` and `publish = false`: nothing here is
-published to a registry. Depending on a crate means a path or git
+All crates are version `0.1.0`. The seven publishable crates
+(`platform-core`, `platform-contracts`, `platform-identity`,
+`platform-audit`, `platform-testing`, `platform-mailing`,
+`platform-ai`) are ready for registry publication; the workflow,
+metadata, and per-crate exclusion list are in place, and the first
+`v0.1.0` release is BLOCKED on the two preconditions in
+`docs/publication.md` §Pre-publish checklist. The internal
+`platform-arch-tests` crate stays `publish = false`: it is
+workspace-internal tooling, not a consumer-facing library.
+Until publication lands, depending on a crate means a path or git
 dependency (see Adoption below), never a version from crates.io.
 
 ## Usage

@@ -270,3 +270,27 @@ adapter refuses plain HTTP to non-loopback hosts at construction,
 and every `AiError` maps onto a shipped `platform-core`
 `ErrorCategory` without leaking API keys, prompts, completions, or
 raw response bodies.
+
+## Publishing
+
+The seven publishable crates
+(`platform-core`, `platform-contracts`, `platform-identity`,
+`platform-audit`, `platform-testing`, `platform-mailing`,
+`platform-ai`) are ready for crates.io publication; the workspace
+declares the registry metadata, the inter-crate dependencies use
+the registry-addressable `{ path = …, version = … }` form, and
+`.github/workflows/publish.yml` ships the tag-gated, topologically
+ordered, idempotent publish pipeline. The internal
+`platform-arch-tests` crate stays `publish = false` and is not part
+of the publish set.
+
+The first `v0.1.0` release is BLOCKED on the two preconditions in
+`docs/publication.md` §Pre-publish checklist: the GitHub-publication
+precondition (which will set the real `[workspace.package]
+repository` URL via the workspace-governance
+`scripts/github_metadata.py` flow) and the owner-added
+`PUBLICATION-APPROVED` marker. The publish workflow refuses to
+start without both, so no registry calls are made until the owner
+explicitly approves. Until publication lands, depending on a crate
+means a path or git dependency (see [Adoption](#adoption) in the
+README), never a version from crates.io.

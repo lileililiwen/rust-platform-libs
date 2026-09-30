@@ -17,7 +17,24 @@ edition = "2021"
 license = "Apache-2.0"
 rust-version = "1.75"
 version = "0.1.0"
-publish = false
+publish = true
+# Repository URL is a tracked precondition. The workspace has no git
+# remote today (verified 2026-09-30, again at implementation on
+# 2026-10-01) and the workspace-governance GitHub-publication flow
+# (`scripts/github_metadata.py` in workspace-governance) is the
+# replacement path. Until the owner publishes the repository, this
+# value is a placeholder; `PUBLICATION-APPROVED` + the tag-version
+# precheck + the `CARGO_REGISTRY_TOKEN` secret in `.github/workflows/
+# publish.yml` keep any real release gated on that decision.
+repository = "https://github.com/rust-platform-libs/rust-platform-libs"
+homepage = "https://github.com/rust-platform-libs/rust-platform-libs"
+# The `documentation` field is per-crate (each crate's docs.rs URL),
+# not a workspace-inheritable default; per-crate `documentation`
+# entries below point at https://docs.rs/<name> as crates.io
+# conventionally does.
+readme = "README.md"
+keywords = ["platform", "rust", "contracts", "cross-cutting", "framework-neutral"]
+categories = ["development-tools"]
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

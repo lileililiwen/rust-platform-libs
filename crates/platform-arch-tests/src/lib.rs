@@ -503,4 +503,136 @@ mod tests {
             );
         }
     }
+
+    /// Parse the `.publish-order` file at the workspace root. Comment
+    /// lines (`#…`) and blank lines are skipped; the remaining lines
+    /// are returned in file order.
+    fn read_publish_order(workspace: &Path) -> Vec<String> {
+        let raw = fs::read_to_string(workspace.join(".publish-order"))
+            .expect(".publish-order is readable at the workspace root");
+        raw.lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// Names of every workspace member that may be published to a
+    /// registry. The set excludes the one explicitly-unpublishable
+    /// member (`platform-arch-tests`, `publish = false`) and
+    /// includes every other member, including the public test-only
+    /// crate `platform-testing` (which is published so consumers can
+    /// `cargo add --dev platform-testing`).
+    fn publishable_crate_names(manifests: &BTreeMap<String, ParsedCrate>) -> BTreeSet<String> {
+        manifests
+            .iter()
+            .filter(|(name, _)| *name != "platform-arch-tests")
+            .map(|(name, _)| name.clone())
+            .collect()
+    }
+
+    #[test]
+    fn publish_order_covers_every_publishable_crate_exactly_once() {
+        let ws = workspace_root();
+        let order = read_publish_order(&ws);
+        let manifests = read_workspace_manifests(&ws);
+        let publishable = publishable_crate_names(&manifests);
+
+        // Every name in `.publish-order` MUST be a real, publishable
+        // workspace member.
+        for name in &order {
+            assert!(
+                publishable.contains(name),
+                ".publish-order lists {name:?} but it is not a publishable workspace member"
+            );
+        }
+        // `platform-arch-tests` MUST NOT appear, even if it slips in.
+        assert!(
+            !order.iter().any(|n| n == "platform-arch-tests"),
+            ".publish-order must not list platform-arch-tests (publish = false)"
+        );
+        // Every publishable crate MUST appear exactly once.
+        let unique: BTreeSet<&String> = order.iter().collect();
+        assert_eq!(
+            unique.len(),
+            order.len(),
+            ".publish-order has duplicate entries: {order:?}"
+        );
+        let order_set: BTreeSet<String> = order.iter().cloned().collect();
+        let missing: Vec<&String> = publishable.difference(&order_set).collect();
+        assert!(
+            missing.is_empty(),
+            ".publish-order is missing publishable crates: {missing:?}"
+        );
+    }
+
+    #[test]
+    fn publish_order_respects_dependency_dag() {
+        // For every `b` in the order, every `platform-*` direct
+        // dependency of `b` MUST appear earlier in the order. A pair
+        // that violates this would mean the publish workflow uploads
+        // a crate before its dep is on the registry, which
+        // `cargo publish` refuses (it requires registry-addressable
+        // deps).
+        let ws = workspace_root();
+        let order = read_publish_order(&ws);
+        let order_index: BTreeMap<&str, usize> = order
+            .iter()
+            .enumerate()
+            .map(|(i, n)| (n.as_str(), i))
+            .collect();
+        let manifests = read_workspace_manifests(&ws);
+        for b in &order {
+            let b_manifest = manifests
+                .get(b)
+                .unwrap_or_else(|| panic!("publish-order entry {b:?} has no manifest"));
+            for dep in &b_manifest.dependencies {
+                // Only platform-* deps must be ordered; non-platform
+                // deps resolve from crates.io independently.
+                if !dep.starts_with("platform-") {
+                    continue;
+                }
+                let dep_index = order_index.get(dep.as_str()).copied().unwrap_or_else(|| {
+                    panic!("publish-order entry {b:?} depends on {dep:?} which is not in the order")
+                });
+                let b_index = order_index[b.as_str()];
+                assert!(
+                    dep_index < b_index,
+                    "publish-order DAG violation: {b} (position {b_index}) depends on {dep} (position {dep_index}); reorder .publish-order so every dep comes first"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn arch_tests_manifest_explicitly_publish_false() {
+        // The publish workflow relies on `platform-arch-tests`
+        // refusing to publish, not merely being absent from
+        // `.publish-order`. Read the manifest verbatim and assert
+        // `publish = false` is set explicitly so a future change
+        // cannot accidentally re-enable publication through
+        // workspace inheritance.
+        let ws = workspace_root();
+        let manifest_path = ws
+            .join("crates")
+            .join("platform-arch-tests")
+            .join("Cargo.toml");
+        let raw = fs::read_to_string(&manifest_path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", manifest_path.display()));
+        let value: toml::Value = toml::from_str(&raw)
+            .unwrap_or_else(|e| panic!("parse {}: {e}", manifest_path.display()));
+        let publish = value
+            .get("package")
+            .and_then(|p| p.get("publish"))
+            .unwrap_or_else(|| {
+                panic!(
+                    "platform-arch-tests/Cargo.toml must declare `publish` explicitly (got: {raw})"
+                )
+            });
+        assert_eq!(
+            publish.as_bool(),
+            Some(false),
+            "platform-arch-tests/Cargo.toml must set `publish = false`; got {publish:?}"
+        );
+    }
 }

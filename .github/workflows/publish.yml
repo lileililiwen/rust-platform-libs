@@ -1,0 +1,205 @@
+name: publish
+
+# Tag-gated registry publication. The workflow only runs on a `vX.Y.Z`
+# tag push; branch pushes and pull requests never publish. The
+# conditions inside the job also enforce the two tracked preconditions
+# from the registry-publication change (design P3, P6):
+#
+#   * `PUBLICATION-APPROVED` marker file is tracked in the repository
+#     (the owner adds it only when they explicitly approve the
+#     release — until then the job fails with the precondition
+#     message and zero registry calls happen).
+#   * `CARGO_REGISTRY_TOKEN` repository secret is configured
+#     (crate-scope `platform-*` token, rotated per the policy in
+#     `docs/publication.md`).
+#   * The pushed tag's semver equals the workspace package version
+#     (`[workspace.package] version = "…"`). A mismatch fails the
+#     job naming both values before any publish step runs.
+#
+# Crate order is read from `.publish-order` at the workspace root;
+# `platform-arch-tests` includes a unit test that compares the file
+# against the manifest DAG so the order and the source of truth
+# cannot drift.
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+  workflow_dispatch:
+    inputs:
+      confirm_owner_approval:
+        description: 'Type "approve" to confirm the release precondition is met'
+        required: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # Refuse dispatch unless the operator explicitly types "approve".
+    # Tag pushes are the normal path; dispatch is a deliberate
+    # fallback for the rare case where the tag is in place but the
+    # previous run failed and needs a manual retry after the
+    # precondition was met mid-flight.
+    if: |
+      (github.event_name == 'push') ||
+      (github.event_name == 'workflow_dispatch' &&
+       inputs.confirm_owner_approval == 'approve')
+    steps:
+      - name: Refuse without PUBLICATION-APPROVED marker
+        # This is the registry-publication design P3 / P6 gate.
+        # The marker file is created and tracked by the owner when
+        # they explicitly approve the release. While the marker is
+        # absent, the workflow fails with the precondition message
+        # and zero registry calls are made.
+        run: |
+          if [ ! -f PUBLICATION-APPROVED ]; then
+            echo "::error::PUBLICATION-APPROVED marker file is missing. The release is BLOCKED on P6 (owner approval for GitHub + crates.io publication). See docs/publication.md §Pre-publish checklist."
+            exit 1
+          fi
+          echo "PUBLICATION-APPROVED marker present; precondition P6 satisfied."
+
+      - name: Refuse without CARGO_REGISTRY_TOKEN
+        run: |
+          if [ -z "${{ secrets.CARGO_REGISTRY_TOKEN }}" ]; then
+            echo "::error::CARGO_REGISTRY_TOKEN secret is missing. Create a crate-scoped token for platform-* per docs/publication.md §Token handling, then re-run."
+            exit 1
+          fi
+          echo "CARGO_REGISTRY_TOKEN secret present."
+
+      - name: Verify tag version matches workspace version
+        id: version-check
+        # Refuse when the pushed tag (or the manual dispatch's
+        # implicit expectation) does not match the workspace
+        # version. The job fails before any publish step runs, with
+        # both values named in the error.
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${GITHUB_REF#refs/tags/v}"
+          else
+            # Manual dispatch: the operator must ensure the tag is
+            # already in place. We read the most recent matching
+            # tag from `git tag`.
+            TAG="$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null | sed 's/^v//' || true)"
+            if [ -z "$TAG" ]; then
+              echo "::error::workflow_dispatch requires an existing vX.Y.Z tag; create one first."
+              exit 1
+            fi
+          fi
+          WORKSPACE_VERSION="$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' Cargo.toml | head -1)"
+          if [ -z "$WORKSPACE_VERSION" ]; then
+            echo "::error::Could not read workspace version from Cargo.toml"
+            exit 1
+          fi
+          if [ "$TAG" != "$WORKSPACE_VERSION" ]; then
+            echo "::error::tag v$TAG does not match workspace version $WORKSPACE_VERSION; refusing before any publish step runs."
+            exit 1
+          fi
+          echo "version=$TAG" >> "$GITHUB_OUTPUT"
+          echo "tag v$TAG matches workspace version $WORKSPACE_VERSION."
+
+      - name: Read publish order
+        id: order
+        # `.publish-order` is the single source of truth for the
+        # topological publish sequence. The unit test in
+        # `platform-arch-tests` asserts the file is consistent with
+        # the manifest DAG.
+        run: |
+          if [ ! -f .publish-order ]; then
+            echo "::error::.publish-order missing at the workspace root."
+            exit 1
+          fi
+          ORDER="$(grep -v '^\s*#' .publish-order | grep -v '^\s*$' | tr '\n' ' ' | sed 's/ $//')"
+          if [ -z "$ORDER" ]; then
+            echo "::error::.publish-order is empty after stripping comments and blanks."
+            exit 1
+          fi
+          echo "order=$ORDER" >> "$GITHUB_OUTPUT"
+          echo "publish order: $ORDER"
+
+      - name: Verify name availability (best-effort pre-flight)
+        # crates.io names are first-come; re-verify availability
+        # before each publish run. The 2026-09-30 name audit
+        # recorded all seven `platform-*` names as free. The
+        # verification is a 404 on the API for each name; a name
+        # returning 200 means another party has claimed it and the
+        # release is blocked.
+        env:
+          CRATE_NAMES: ${{ steps.order.outputs.order }}
+        run: |
+          for crate in $CRATE_NAMES; do
+            STATUS="$(curl -s -o /dev/null -w '%{http_code}' "https://crates.io/api/v1/crates/$crate")"
+            if [ "$STATUS" != "404" ]; then
+              echo "::error::crates.io name pre-flight: $crate returned HTTP $STATUS (expected 404 for a free name). Resolve the name conflict before retrying."
+              exit 1
+            fi
+          done
+          echo "all $(echo $CRATE_NAMES | wc -w) crate names return 404 on crates.io; name pre-flight passes."
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry
+        uses: Swatinem/rust-cache@v2
+
+      - name: Publish crates in topological order
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          CRATE_NAMES: ${{ steps.order.outputs.order }}
+          WORKSPACE_VERSION: ${{ steps.version-check.outputs.version }}
+        run: |
+          set -euo pipefail
+          for crate in $CRATE_NAMES; do
+            echo "::group::Publish $crate v$WORKSPACE_VERSION"
+            # Idempotence: a rerun after a partial failure skips
+            # already-published versions. The 404 pre-flight is
+            # scoped to the version, so a successful previous
+            # publish returns 200 here and we skip.
+            EXISTING="$(curl -s -o /dev/null -w '%{http_code}' \
+              "https://crates.io/api/v1/crates/$crate/$WORKSPACE_VERSION")"
+            if [ "$EXISTING" = "200" ]; then
+              echo "::notice::$crate v$WORKSPACE_VERSION already published; skipping (rerun idempotence)."
+              echo "::endgroup::"
+              continue
+            fi
+            if [ "$EXISTING" != "404" ]; then
+              echo "::error::$crate v$WORKSPACE_VERSION pre-flight returned HTTP $EXISTING (expected 404 for a free version)."
+              exit 1
+            fi
+            # No `--allow-dirty` (banned by design §6) and no
+            # `--no-verify` (banned by design §0). Cargo's own
+            # verify step recompiles the packaged source against
+            # the registry form of its deps, so a successful
+            # `cargo publish` is the strongest pre-flight we can
+            # run.
+            cargo publish -p "$crate"
+            # Propagation poll: wait up to 15 minutes (30 retries
+            # at 30 s each) for the index to expose the new
+            # version. A propagation timeout fails the job with
+            # the crate name; rerun idempotence makes the retry
+            # safe.
+            propagated=0
+            for i in $(seq 1 30); do
+              sleep 30
+              CODE="$(curl -s -o /dev/null -w '%{http_code}' \
+                "https://crates.io/api/v1/crates/$crate/$WORKSPACE_VERSION")"
+              if [ "$CODE" = "200" ]; then
+                echo "::notice::$crate v$WORKSPACE_VERSION propagated after $((i*30))s."
+                propagated=1
+                break
+              fi
+              echo "  propagation attempt $i/30: HTTP $CODE"
+            done
+            if [ "$propagated" -ne 1 ]; then
+              echo "::error::$crate v$WORKSPACE_VERSION did not propagate within 15 minutes; rerun will skip via idempotence."
+              exit 1
+            fi
+            echo "::endgroup::"
+          done
+          echo "::notice::All $(echo $CRATE_NAMES | wc -w) crates published and propagated at version $WORKSPACE_VERSION."

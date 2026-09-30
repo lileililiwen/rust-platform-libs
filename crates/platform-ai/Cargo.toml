@@ -6,6 +6,10 @@ license.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 description = "Provider-neutral AI capability contract: chat, structured, embedding, and stream types, plus opt-in OpenAI-compatible and ollama adapters and a deterministic in-crate mock."
+documentation = "https://docs.rs/platform-ai"
+keywords = ["platform", "rust", "ai", "llm", "openai", "ollama", "embeddings"]
+categories = ["api-bindings", "asynchronous"]
+exclude = ["/.github", "/openspec", "/tests/**/fixtures", "docs/**", ".project.json"]
 
 [lints]
 workspace = true
@@ -27,7 +31,7 @@ openai-compat = ["dep:reqwest", "dep:tokio"]
 ollama = ["dep:reqwest", "dep:tokio"]
 
 [dependencies]
-platform-core = { path = "../platform-core" }
+platform-core = { path = "../platform-core", version = "0.1.0" }
 async-trait = { workspace = true }
 async-stream = { workspace = true }
 futures = { workspace = true }
