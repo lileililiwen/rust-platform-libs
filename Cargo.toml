@@ -7,6 +7,7 @@ members = [
     "crates/platform-audit",
     "crates/platform-testing",
     "crates/platform-arch-tests",
+    "tests/consumer-fixture",
 ]
 
 [workspace.package]

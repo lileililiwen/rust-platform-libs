@@ -35,6 +35,14 @@ the full set.
    in-tree parity coverage moves from 4 of 9 contract families
    toward the full set. New external dependencies require
    two-consumer evidence.
+4b. `rust-platform-consumer-baseline` — **done**. Committed
+   `rustfmt.toml`, `clippy.toml`, `deny.toml`, and
+   `rust-toolchain.toml` (pin `1.95.0`; declared MSRV stays `1.75`
+   with an effective floor of 1.88 via `time 0.3.55`, recorded in
+   `docs/consumer-baseline.md`), extended CI to formatting, clippy
+   `-D warnings`, `cargo deny check`, tests, and
+   `scripts/conformance.sh`, plus the `tests/consumer-fixture`
+   in-workspace consumer. `publish = false` unchanged.
 5. `axum-web-adapters` — deferred. Opt-in web adapters land only
    after at least two real consumers agree on the contracts and
    an explicit OpenSpec change records the decision.

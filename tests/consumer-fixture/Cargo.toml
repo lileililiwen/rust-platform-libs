@@ -1,0 +1,20 @@
+[package]
+name = "consumer-fixture"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Conformance fixture: a minimal in-workspace consumer of the platform crates, exercised by scripts/conformance.sh."
+
+[lints]
+workspace = true
+
+[dependencies]
+platform-core = { path = "../../crates/platform-core" }
+platform-contracts = { path = "../../crates/platform-contracts" }
+platform-identity = { path = "../../crates/platform-identity" }
+platform-audit = { path = "../../crates/platform-audit" }
+
+[dev-dependencies]
+platform-testing = { path = "../../crates/platform-testing" }
