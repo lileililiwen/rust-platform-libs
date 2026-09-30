@@ -161,6 +161,60 @@ dependency as an explicitly documented offline stand-in for the
 versioned git form (no registry or git remote exists in this
 environment).
 
+## Evidence — consumer-conformance-matrix (recorded 2026-09-30)
+
+The change is implemented, archived to
+`openspec/changes/archive/2026-09-30-consumer-conformance-matrix/`,
+and spec-synced into `openspec/specs/rust-platform-foundation/spec.md`
+(new requirement: operational families have typed payloads and parity
+walkers). Implementation commit is `9128c35`.
+
+What was added (no validator, registry, envelope, schema, or other-crate
+change; no new dependencies):
+
+* `crates/platform-contracts/src/payload/{gate_result,job_outcome,release_evidence,capability}.rs`
+  — `GateResult`/`GateCheck`/`GateResultValue`,
+  `JobOutcome`/`JobResult`, `ReleaseEvidence`/`EvidenceKind`,
+  `Capability`/`Stability`, following the existing permissive-builder
+  payload pattern (serde structs, snake_case enums, `Option` for
+  schema-optional fields, raw-`String` timestamps), each with a
+  serde round-trip unit test and a `ContractPayload` impl.
+* `crates/platform-contracts/tests/fixture_parity.rs` — five walker
+  tests reusing the unchanged `walk_family` helper; all 5 families
+  pass on the unmodified generic validator with zero policy changes.
+* `crates/platform-contracts/tests/typed_payload_parity.rs` — four
+  tests proving each new typed payload serializes to an envelope the
+  registry-backed validator accepts.
+* `README.md` parity count (48 → 108 cases), `ROADMAP.md` step 4
+  marked done.
+
+Verification outputs (all fresh this session):
+
+* `cargo test --workspace` → **104 passed, 0 failed** (91 prior + 5
+  walkers + 4 round-trips + 4 typed-parity).
+* `cargo test -p platform-contracts` → 13 unit + 11 parity + 4
+  typed-parity, all green.
+* Cross-repository fixture parity: **108 cases × 9 roadmap contract
+  families pass** (48 prior + 60 new: 12 per family across
+  `readiness`, `gate-result`, `job-outcome`, `release-evidence`,
+  `capability`).
+* `cargo fmt --all -- --check` → clean.
+* `cargo clippy --workspace --all-targets -- -D warnings` → clean.
+* `cargo deny check` → advisories ok, bans ok, licenses ok, sources ok.
+* `node scripts/check-openspec-change-names.mjs` → ok.
+* `openspec validate --changes --strict --no-interactive` → passed.
+* `openspec validate --specs --strict --no-interactive` → 3/3 passed
+  (`rust-platform-foundation` now 4 requirements / 7 scenarios).
+
+Evidence boundary for this change: the walkers prove the Rust validator
+agrees with the language-neutral one on all 9 roadmap families, and the
+typed-parity tests prove the new builders emit wire-valid documents.
+`platform.public-portfolio-manifest` (tenth registry family, Forge/Hugo
+owner, major version 1) is explicitly out of scope. No consumer adoption
+is claimed. The pre-existing `.project.json` modification and the
+`mailing-provider-adapters` / `post-mvp-readiness` proposals stay out of
+this change's commits.
+
 ## Evidence boundary
 
 The 90 unit and integration tests, the 48-case cross-repository
@@ -203,11 +257,11 @@ In particular:
 
 ## Next action
 
-The next OpenSpec change is the consumer-conformance-matrix
-described in `ROADMAP.md` step 3. It will add the readiness,
-gate-result, job-outcome, release-evidence, and capability
-fixture walkers and bring the in-tree parity coverage from 4 of
-9 contract families to a larger share. Until then, the
-foundation plus the second-layer permission / audit / tenant
-helpers are the working state and the `current_spec` pointer
-above is the source of truth.
+The consumer-conformance-matrix change is done (9 of 9 roadmap families
+at 108 parity cases). Two drafted proposals remain open in-tree and
+untouched by this change: `mailing-provider-adapters` and
+`post-mvp-readiness`. The repo owner selects which (if either) becomes
+the next active change and records it in the `current_spec` pointer
+above before implementation; until then the foundation plus the
+second-layer permission / audit / tenant helpers plus the full
+operational payload surface are the working state.
