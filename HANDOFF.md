@@ -1,10 +1,10 @@
 # Rust Platform Libraries Handoff
 
-current_spec: none — all OpenSpec changes archived (mailing-provider-adapters was the last open proposal)
+current_spec: none — all OpenSpec changes archived (ai-provider-adapters was the last open proposal)
 
 ## Current state
 
-Six OpenSpec changes are **implemented, archived, and
+Seven OpenSpec changes are **implemented, archived, and
 spec-synced** in this repository.
 
 1. `rust-platform-foundation-and-contracts` (archived on 2026-09-24
@@ -26,6 +26,9 @@ spec-synced** in this repository.
 6. `mailing-provider-adapters` (archived on 2026-09-30 to
    `openspec/changes/archive/2026-09-30-mailing-provider-adapters/`,
    spec at `openspec/specs/platform-mailing/spec.md`).
+7. `ai-provider-adapters` (archived on 2026-09-30 to
+   `openspec/changes/archive/2026-09-30-ai-provider-adapters/`,
+   spec at `openspec/specs/platform-ai/spec.md`).
 
 What is in the tree:
 
@@ -59,8 +62,11 @@ What is in the tree:
     production crate (directly or transitively) depends on `axum`,
     `sqlx`, `cookie`, `jsonwebtoken`, `openidconnect`, `oauth2`,
     `reqwest`, `lettre`, `tokio`, or `platform-testing`, while the
-    named satellite `platform-mailing` alone may reach
-    `lettre`/`tokio` through an explicit allowlist.
+    named satellites `platform-mailing` and `platform-ai` are
+    each explicitly allowlisted: `platform-mailing` may reach
+    `lettre`/`tokio`; `platform-ai` may reach `reqwest`/`tokio`/
+    `futures`. Any other crate reaching those leaves is denied
+    until an explicit policy change names it.
   * `platform-mailing` — satellite (production, opt-in) mail send
     contract: `EmailAddress`, `EmailMessage`, `Body`,
     `AttachmentRef`, `MailTransport`, `SendContext`,
@@ -69,6 +75,20 @@ What is in the tree:
     (`SmtpTransportConfig`, `LettreSmtpTransport`, rustls only),
     and the `mock` feature's `MockTransport`. No retry, queue,
     persistence, templates, or HTTP provider adapters.
+  * `platform-ai` — satellite (production, opt-in) AI capability
+    contract: `Message`, `ChatRequest`, `GenerationOptions`,
+    `ToolDefinition`, `ToolCall`, `ChatResponse`, `StreamChunk`,
+    `Embedding`, `Capabilities`, `ProviderInfo`, `AiContext`,
+    `AiProvider` / `EmbeddingProvider`, `AiError` (frozen-category
+    mapping, redacted display), the `openai-compat` adapter
+    (`OpenAiCompatConfig`, `OpenAiCompatProvider`, rustls only,
+    SSE streaming, JSON-schema structured output, tool calls;
+    covers OpenAI, DeepSeek, Zhipu, and any other vendor that
+    exposes the same wire shape), the `ollama` adapter
+    (`OllamaConfig`, `OllamaProvider`, default loopback endpoint,
+    NDJSON streaming, no credentials), and the `mock` feature's
+    `MockAi`. No Anthropic, no retry, no agent loop, no local
+    token estimation.
 * `crates/platform-contracts/tests/fixture_parity.rs` — the
   cross-repository fixture walker. The test resolves the live
   `platform-contracts` repository via `PLATFORM_CONTRACTS_DIR` (or
@@ -422,6 +442,175 @@ exhaustive classify/map unit test, not against live servers. No
 consumer has migrated (alltools, rust-ecommerce, openpanel keep
 their own plumbing until their own OpenSpec changes), and no
 real SMTP delivery is claimed.
+
+## Evidence — ai-provider-adapters (recorded 2026-09-30)
+
+The change is implemented, archived to
+`openspec/changes/archive/2026-09-30-ai-provider-adapters/`, and
+spec-synced into `openspec/specs/platform-ai/spec.md` (6
+requirements / 11 scenarios, plus a `## Purpose` section added at
+sync time because strict spec validation requires it, as with the
+two prior satellites). It was the last open proposal:
+`openspec/changes/` now holds only `archive/`. Implementation
+commit is `b1af193`.
+
+What was added (no `platform-core|contracts|identity|audit|testing|mailing`
+source or public-API change; no sibling edit; `publish = false`
+unchanged):
+
+* `crates/platform-ai/` — `Cargo.toml` (default features empty;
+  `mock`, `openai-compat`, `ollama` opt-in; `reqwest`/`tokio`
+  optional and feature-gated to the two transport features;
+  `futures`/`async-stream` are contract deps), `src/lib.rs`,
+  `src/types.rs` (`Role`, `Content`, `Message`, `GenerationOptions`,
+  `ToolDefinition`, `ToolCall`, `FinishReason`, `Usage`,
+  `ChatRequest` + builder, `ChatResponse`, `StreamChunk` with
+  exactly-one final `Turn`, `Embedding`, `Capabilities` hand-rolled
+  `u8` bit-set with `STREAMING|TOOLS|STRUCTURED|EMBEDDINGS`,
+  `ProviderKind`, `ProviderInfo`, validation enforced at every
+  transport entry), `src/error.rs` (`AiError` 10 variants, total
+  `category()` match onto the frozen `ErrorCategory` with no
+  wildcard arm, `to_safe_error()`, `truncate_safe_detail` Cow
+  helper that caps at 200 bytes and strips control chars;
+  `Display` redaction-audited: no API keys, prompts, completions,
+  or raw response bodies), `src/provider.rs` (`AiProvider` and
+  `EmbeddingProvider` via async-trait for `dyn` on 1.75, default
+  trait methods refuse undeclared capabilities with
+  `AiError::Unsupported`, declared-but-unimplemented with
+  `AiError::Configuration`, `AiContext` with `CorrelationId` +
+  `&dyn Clock`, `validate_embedding_batch` public helper),
+  `src/mock.rs` (feature `mock`: scripted `ScriptedChat` /
+  `ScriptedStream` / `ScriptedEmbed` outcomes, `Mutex` script,
+  default Ok / zero-vector fallbacks, capability-gated stream
+  refusal), `src/openai_compat.rs` (feature `openai-compat`:
+  `OpenAiCompatConfig` with `Secret`-wrapped bearer, `base_url`
+  loopback-only-http rule, `chat_path`/`embed_path` overrides,
+  default 60 s timeout, default 8 MiB stream cap;
+  `OpenAiCompatProvider` with `/v1/chat/completions`,
+  `/v1/embeddings`, SSE streaming, JSON-schema structured output
+  via `response_format: { type: "json_schema", json_schema:
+  { strict, schema } }`, tool-call arguments JSON-parsed, content
+  refusal detected from `error.message` containing
+  `content_refused` and surfaced as `ContentPolicy` ahead of
+  `from_status`; rustls only, no native-tls; `embed_with_model`
+  separate method because the model id is not on the embed path),
+  `src/ollama.rs` (feature `ollama`: `OllamaConfig` with default
+  loopback endpoint, no credentials; `OllamaProvider` over
+  `/api/chat` NDJSON and `/api/embed`, `"format": <schema>` for
+  structured output; embedding count mismatch is
+  `MalformedResponse`; same embedding-batch validation as
+  openai-compat).
+* `tests/ai_error_mapping.rs` (7 cases: invalid-message shapes,
+  every-variant mapping table, `Display` redaction with no
+  secret/prompt leak, boundary redaction, manifest-shape proving
+  `reqwest`/`tokio` optional and default features empty,
+  `unsafe_code` forbid sentinel, `FinishReason` snake-case
+  stability), `tests/ai_mock.rs` (8 cases: scripted sequence,
+  capability gating, stream deltas + terminal Turn, stream
+  error, embed scripted/zero/empty/oversize batch),
+  `tests/ai_openai_compat.rs` (12 wiremock cases: happy chat
+  round-trip, tool-call args JSON-parse, SSE deltas + terminal
+  Turn, structured `json_schema` body, embeddings batch, 401 →
+  `Unauthorized`, 429 → `RateLimited`, 500 with `content_refused`
+  body → `ContentPolicy`, 500 without → `ProviderServer`,
+  malformed JSON → `MalformedResponse`, stream truncation
+  without `[DONE]` → `MalformedResponse`, empty embed model →
+  `Validation` before any socket), `tests/ai_ollama.rs` (11
+  wiremock cases: happy chat, NDJSON deltas + terminal Turn,
+  truncation → `MalformedResponse`, mid-stream server `error` →
+  `ProviderServer`, 404 → `Validation`, 500 → `ProviderServer`,
+  embeddings batch, count mismatch → `MalformedResponse`,
+  structured `"format"` field, empty model and empty batch
+  refused pre-socket), `examples/ai_basics.rs` (default-features-
+  clean stub chat, executed OK).
+* `crates/platform-arch-tests/` — `SATELLITE_ALLOWLIST` now holds
+  `("platform-ai", &["reqwest", "tokio", "futures"])` alongside
+  the existing `("platform-mailing", &["lettre", "tokio"])`. The
+  `only_allowlisted_satellites_directly_depend_on_lettre`
+  integration test now checks "uses at least one allowlisted
+  leaf" instead of "uses lettre" so the new satellite's distinct
+  leaves don't break the vacuous-pass guard. New unit test
+  `ai_satellite_allowlist_permits_reqwest` exercises both the
+  pass path (the satellite's graph) and the failure path
+  (overreach with `lettre`); new unit test
+  `foundation_crate_cannot_reach_reqwest` synthesizes a
+  foundation-graph with `reqwest` and asserts the violation. New
+  integration test `ai_satellite_actually_depends_on_its_allowlisted_leaves`
+  is the per-allowlist vacuous-pass guard for `platform-ai`.
+* Workspace `Cargo.toml` — member registration plus
+  `reqwest 0.12` (`default-features = false`, features
+  `["json", "stream", "rustls-tls", "http2"]`; rustls only, no
+  native-tls), `futures 0.3`, `async-stream 0.3`. `wiremock 0.6`
+  is a dev-dep of `platform-ai` only.
+* `README.md` (per-crate matrix gains the `platform-ai` row,
+  implemented-crates list gains its summary, deferred list
+  explicitly keeps Anthropic out and names OpenAI-compatible +
+  ollama as the shipped satellite), `ROADMAP.md` (stale "six
+  changes done" header rewritten, step 4d recorded with the
+  two-consumer extraction decision), `docs/usage.md` + example
+  (byte-identical, `cargo test --workspace` builds it).
+
+Verification outputs (all fresh this session):
+
+* `cargo test --workspace` → **193 passed, 0 failed** (123 prior
+  + 32 platform-ai lib + 7 error-mapping + 8 mock + 11 ollama +
+  12 openai-compat). The mailing count is unchanged.
+* `cargo test -p platform-ai --no-default-features` → 23 passed
+  (16 lib + 7 error-mapping). `cargo test -p platform-ai
+  --features mock,openai-compat,ollama` → 70 passed (32 lib + 38
+  integration). `cargo test -p platform-arch-tests` → 14 passed
+  (8 lib + 6 integration; the new `ai_satellite_*` cases and the
+  new vacuous-pass guard included).
+* `cargo tree -p platform-ai --no-default-features --edges normal`
+  shows no `reqwest`/`tokio` edge; with `--features
+  mock,openai-compat,ollama` both resolve (reqwest 0.12.x, tokio
+  1.53.1) along with the full transitive graph (hyper, h2,
+  rustls, etc.).
+* `cargo fmt --all -- --check` → clean; `git diff --check` →
+  clean.
+* `cargo clippy --workspace --all-targets -- -D warnings` →
+  clean.
+* `cargo deny check` → advisories ok, bans ok, licenses ok,
+  sources ok (standing unmatched-allowlist warnings only).
+* `./scripts/conformance.sh` → all proofs hold (no
+  foundation/production-crate change, so all six proofs
+  carry over).
+* `node scripts/check-openspec-change-names.mjs` → ok.
+* `openspec validate --changes --strict --no-interactive` → no
+  active changes remain (archive complete).
+* `openspec validate --specs --strict --no-interactive` → 6/6
+  passed (new `platform-ai`: 6 requirements / 11 scenarios).
+* `cargo build --examples --workspace` → clean; all six
+  examples executed directly (5 prior + `ai_basics`) → ran OK.
+  `platform-arch-tests` green, so no new dependency leaked
+  into a foundation crate.
+
+Design-ledger deviations recorded (all compile-needs, no scope
+change): the SSE parser initially emitted a duplicate `Turn`
+when `[DONE]` followed by an empty body completed the stream
+(fixed in commit `b1af193` by clearing `last_finish` on
+`[DONE]`, since the post-loop fallback is meant for
+stream-ended-without-`[DONE]` only); the source's
+`skip_serializing_if = "std::ops::Not::not"` on the `stream: bool`
+field omits `stream: false` for non-streaming requests (which
+matches the OpenAI 06-2025 wire shape, where `stream` defaults
+to `false` when absent, so no behavior changes), and the
+`role_wire_form_is_snake_case` unit test was moved into the
+test module's `use` to silence the `unused_imports` lint.
+
+Evidence boundary for this change: the wiremock fixtures
+replay canned responses through the real `reqwest` and
+`async-stream` parsers, so the SSE / NDJSON byte handling,
+status-code mapping, content-refusal detection, embedding-batch
+count validation, and `truncate_safe_detail` redaction are
+proven against the same code path that production would call
+— but no live provider is contacted (CI has no API keys, and
+the design is explicit that wiremock is the only test
+fixture). No consumer has migrated (alltools keeps its own
+plumbing until its own OpenSpec change), and no live AI
+call is claimed. The pre-existing `.project.json` working-
+tree modification stays out of this change's commits per
+the task caveats, as before.
 
 ## Evidence boundary
 
