@@ -1,6 +1,6 @@
 # Rust Platform Libraries Handoff
 
-current_spec: rust-platform-publication (planning-only author; release step BLOCKED on P6 owner approval) — seven OpenSpec changes archived (ai-provider-adapters was the last)
+current_spec: rust-platform-publication (pipeline shipped; release step BLOCKED on P6 owner approval and the real `[workspace.package] repository` URL — eight OpenSpec changes archived, registry-publication was the last)
 
 ## Current state
 
@@ -29,6 +29,12 @@ spec-synced** in this repository.
 7. `ai-provider-adapters` (archived on 2026-09-30 to
    `openspec/changes/archive/2026-09-30-ai-provider-adapters/`,
    spec at `openspec/specs/platform-ai/spec.md`).
+8. `registry-publication` (archived on 2026-09-30 to
+   `openspec/changes/archive/2026-09-30-registry-publication/`,
+   spec at `openspec/specs/rust-platform-publication/spec.md`).
+   The pipeline is implemented; the first `v0.1.0` release is
+   BLOCKED on P6 (real GitHub-publication precondition + owner
+   approval).
 
 What is in the tree:
 
@@ -612,20 +618,253 @@ call is claimed. The pre-existing `.project.json` working-
 tree modification stays out of this change's commits per
 the task caveats, as before.
 
+## Evidence — registry-publication (recorded 2026-09-30, archived 2026-10-01)
+
+The change is implemented, archived to
+`openspec/changes/archive/2026-09-30-registry-publication/`, and
+spec-synced into `openspec/specs/rust-platform-publication/spec.md`
+(4 requirements / 8 scenarios, plus a `## Purpose` section added at
+sync time). The pipeline is shipped; the actual `cargo publish`
+release stays BLOCKED on P6 (real GitHub-publication precondition
+plus the owner-added `PUBLICATION-APPROVED` marker), with the exact
+owner actions recorded in `docs/publication.md` §Pre-publish
+checklist. Implementation commit is `8e43e7d`. It was selected as
+the next active change because the only remaining work after the
+seven foundation / payload / satellite changes was the
+publication-pipeline metadata and workflow, with no new crate,
+trait, or contract surface.
+
+What was added (no foundation / satellite source or public-API
+change; no sibling edit; `publish = false` for the workspace-internal
+crates explicitly kept):
+
+* `[workspace.package]` in root `Cargo.toml` — `publish = true`,
+  `repository` / `homepage` (a documented placeholder URL that the
+  owner replaces when the GitHub-publication precondition lands),
+  `readme = "README.md"`, `keywords = ["platform", "rust",
+  "contracts", "cross-cutting", "framework-neutral"]`,
+  `categories = ["development-tools"]`. Per-crate
+  `documentation = "https://docs.rs/<name>"` and
+  per-crate `keywords` / `categories` / `exclude` on every
+  publishable manifest. `platform-arch-tests` keeps an explicit
+  `publish = false` override so workspace inheritance cannot
+  accidentally re-enable publication. `tests/consumer-fixture`
+  also keeps an explicit `publish = false` override so the
+  path-dependency conformance fixture stays workspace-internal.
+* Inter-crate deps in the registry-addressable
+  `{ path = "../platform-core", version = "0.1.0" }` form on every
+  publishable crate manifest so `cargo publish` rewrites path deps
+  to version requirements at upload time.
+* `.publish-order` — the topological publish order
+  (`platform-core` → `platform-contracts` → `platform-identity` →
+  `platform-audit` → `platform-testing` → `platform-mailing` →
+  `platform-ai`), one crate per line, comments above each entry
+  naming the reason. Read by `.github/workflows/publish.yml` and
+  asserted against the manifest DAG by a unit test in
+  `platform-arch-tests` (see below).
+* `.github/workflows/publish.yml` — tag-gated (`v[0-9]+.[0-9]+.[0-9]+*`
+  only; branch pushes never publish), with explicit
+  `permissions: contents: read`. Steps in order:
+  - `Refuse without PUBLICATION-APPROVED marker` — design P3 / P6
+    gate; failure prints the precondition message and exits
+    before any registry call.
+  - `Refuse without CARGO_REGISTRY_TOKEN` — design P3 secret gate.
+  - `Verify tag version matches workspace version` — reads
+    `GITHUB_REF` on push, the most recent `v*` tag on dispatch,
+    compares against `sed -n 's/^version *= *"\([^"]*\)".*/\1/p'
+    Cargo.toml`; failure names both values and exits before any
+    publish step runs.
+  - `Read publish order` — parses `.publish-order` (comment and
+    blank lines stripped) into a `GITHUB_OUTPUT` for downstream
+    steps.
+  - `Verify name availability (best-effort pre-flight)` — 404
+    check on `https://crates.io/api/v1/crates/<name>` for every
+    name; non-404 fails the job (re-checking first-come names).
+  - `Install Rust toolchain` (dtolnay/rust-toolchain@stable,
+    components `rustfmt` + `clippy`) and `Cache cargo registry`
+    (Swatinem/rust-cache@v2).
+  - `Publish crates in topological order` — per-crate
+    `cargo publish -p "$crate"` (no `--allow-dirty`, no
+    `--no-verify`; both are banned by design §0 / §6), with
+    per-crate 404 pre-flight on the version, 30-attempt × 30 s
+    propagation poll against
+    `https://crates.io/api/v1/crates/<name>/<version>`, and
+    skip-existing idempotence (a 200 on the pre-flight means
+    "already published", so the crate is skipped and the loop
+    continues; a non-200 / non-404 fails the job). `workflow_dispatch`
+    requires the operator to type `approve` so a manual retry
+    never bypasses the precondition.
+* `crates/platform-arch-tests/src/lib.rs` — three new unit tests:
+  - `publish_order_covers_every_publishable_crate_exactly_once` —
+    every non-comment, non-blank line in `.publish-order` is a
+    real workspace member; `platform-arch-tests` is never listed;
+    every publishable crate appears exactly once.
+  - `publish_order_respects_dependency_dag` — for every `b` in
+    `.publish-order`, every `platform-*` direct dependency of `b`
+    must appear earlier in the order; the failure message names
+    the offending pair and their positions.
+  - `arch_tests_manifest_explicitly_publish_false` — reads
+    `crates/platform-arch-tests/Cargo.toml` verbatim and asserts
+    `package.publish` is set to `false` explicitly, so a future
+    change cannot accidentally re-enable publication through
+    workspace inheritance.
+* `docs/publication.md` — the policy document: lockstep
+  versioning (one workspace version, bumped in one commit with a
+  matching `vX.Y.Z` tag and a changelog entry), the pre-1.0
+  semver rule (patch = compatible, minor = break), the yank
+  procedure (manual `cargo yank` per crate, every yank recorded
+  in the changelog with reason and replacement), the
+  `CARGO_REGISTRY_TOKEN` recipe (crate-scoped, time-limited,
+  rotated on maintainer change), and the two-precondition
+  pre-publish checklist (real GitHub-publication URL via
+  `scripts/github_metadata.py`; owner-added `PUBLICATION-APPROVED`
+  marker). The changelog section starts with one `_pending_`
+  row for the first `v0.1.0` release.
+* `README.md` — header paragraph now names the
+  `registry-publication` pipeline and points at the BLOCKED
+  release; the crate-matrix trailer paragraph records the seven
+  publishable crates + the explicit `publish = false` overrides
+  on `platform-arch-tests` and `consumer-fixture`.
+* `ROADMAP.md` — `4e. registry-publication — done (pipeline);
+  release BLOCKED on P6 owner approval` records the change with
+  the full dependency-order step; the deferred list keeps
+  `axum-web-adapters` and `sqlx-session-and-audit-adapters` as
+  their own future changes.
+* `docs/usage.md` — a "Publishing" section at the end of the
+  existing per-crate examples names the seven publishable crates,
+  the workspace-internal overrides, and the two preconditions in
+  `docs/publication.md` §Pre-publish checklist.
+
+Verification outputs (pinned toolchain 1.95.0, all fresh this
+session):
+
+* `cargo publish --dry-run -p <crate>` for all seven publishable
+  crates succeeds (with a one-time local `[patch.crates-io]` in a
+  gitignored `.cargo/config.toml` that redirects the
+  `platform-*` deps to local paths, simulating the
+  "platform-core is already on the registry" state for the
+  dependent crates; the real workflow runs the topological order
+  with propagation polls so the registry form is real at each
+  step). Output (abridged):
+  * `platform-core`: `Packaged 13 files, 36.9KiB (11.1KiB compressed)`;
+    `Verifying platform-core v0.1.0` recompiles the packaged
+    source and finishes clean; `aborting upload due to dry run`.
+  * `platform-contracts`: `Packaged 21 files, 99.4KiB (24.5KiB
+    compressed)`; clean.
+  * `platform-identity`: `Packaged 17 files, 73.3KiB (19.2KiB
+    compressed)`; clean.
+  * `platform-audit`: `Packaged 11 files, 56.9KiB (15.2KiB
+    compressed)`; clean.
+  * `platform-testing`: `Packaged 11 files, 47.0KiB (13.2KiB
+    compressed)`; clean.
+  * `platform-mailing`: `Packaged 13 files, 94.9KiB (25.1KiB
+    compressed)`; clean (the pre-existing `yoke-derive` yanked
+    warning is unchanged from prior changes).
+  * `platform-ai`: `Packaged 16 files, 216.6KiB (47.1KiB
+    compressed)`; clean.
+  * `platform-arch-tests`: refused with
+    ``error: `platform-arch-tests` cannot be published.
+    `package.publish` must be set to `true` or a non-empty list
+    in Cargo.toml to publish.``
+  * `consumer-fixture`: refused with the same message after the
+    new explicit `publish = false` override.
+* `cargo package -p <crate> --no-verify --list` for all seven
+  publishable crates excludes `openspec/` and `.github/` (zero
+  leaks per crate, asserted with `grep -cE`).
+* Bash dry-run of the workflow's precheck logic with the local
+  fixtures (marker absent, tag `v0.99.0` ≠ workspace `v0.1.0`,
+  `CARGO_REGISTRY_TOKEN` unset, order file present with 7
+  crates) confirms each negative fails with the named reason and
+  the positive (tag `v0.1.0` == workspace `v0.1.0`) proceeds —
+  no real network calls, no real registry writes.
+* YAML lint: `python3 -c "import yaml; …"` parses
+  `.github/workflows/publish.yml` to a single `publish` job.
+* `cargo test --workspace` → **152 passed, 0 failed** (149 prior
+  + 3 new arch-tests). The 152 number is the default-features
+  count; `cargo test --workspace --all-features` → 207 (the
+  `mock` / `ollama` / `openai-compat` / `smtp-lettre` feature
+  tests). The 41-test difference matches the platform-ai and
+  platform-mailing feature-gated tests, all unchanged from prior
+  changes.
+* `cargo test -p platform-arch-tests` → 11 unit + 6 integration,
+  all green; the three new tests
+  (`publish_order_covers_every_publishable_crate_exactly_once`,
+  `publish_order_respects_dependency_dag`,
+  `arch_tests_manifest_explicitly_publish_false`) included.
+* `cargo fmt --all -- --check` → clean.
+* `cargo clippy --workspace --all-targets -- -D warnings` → clean.
+* `cargo deny check` → advisories ok, bans ok, licenses ok,
+  sources ok. Adding `publish = false` to `consumer-fixture` was
+  required because the workspace-internal `..`-path deps on
+  `../../crates/platform-*` are wildcard paths that
+  `cargo-deny` refuses for crates it considers publishable.
+* `./scripts/conformance.sh` → all proofs hold (the
+  `consumer-fixture` path-dependency conformance harness still
+  builds, tests, formats, and lints clean under the unchanged
+  baseline).
+* `node scripts/check-openspec-change-names.mjs` → ok.
+* `openspec validate --changes --strict --no-interactive` → no
+  active changes remain (archive complete).
+* `openspec validate --specs --strict --no-interactive` → 7/7
+  passed (new `rust-platform-publication`: 4 requirements / 8
+  scenarios).
+* `cargo build --examples --workspace` → clean; all six
+  examples unchanged and still execute.
+* `git diff --check` → clean.
+
+Design-ledger deviations recorded (all compile-needs, no scope
+change): `cargo-deny` introduced a new wildcard-paths refusal
+once the workspace default flipped to `publish = true` (the
+`tests/consumer-fixture` path deps on `../../crates/platform-*`
+are wildcard paths that `cargo-deny` refuses for crates it
+considers publishable); the fix is the explicit `publish = false`
+override on `consumer-fixture` documented above. The
+`yoke-derive v0.8.3` yanked warning surfaces again on
+`platform-mailing` and `platform-ai` dry-runs (pre-existing
+transitive pull-in via `icu_normalizer` / `icu_properties`,
+unchanged by this change). The `[patch.crates-io]`
+`.cargo/config.toml` used to run the local dry-runs in
+topological order is gitignored (`.cargo/` is in `.gitignore`),
+is not part of the change, and is recreated on demand by anyone
+re-running the dry-run oracle.
+
+Evidence boundary for this change: the workspace builds, tests,
+formats, lints, denies, and validates clean with the new
+metadata, the new workflow YAML, the new order file, the new
+policy doc, and the three new arch-tests in place; the
+topological `cargo publish --dry-run` for all seven publishable
+crates succeeds (with the local-path patch simulating the
+registry state), the package lists exclude the internal paths,
+and `platform-arch-tests` and `consumer-fixture` correctly
+refuse. No real registry call is made; no real `v0.1.0` tag is
+pushed; the `PUBLICATION-APPROVED` marker is absent by design.
+The release is BLOCKED on P6, and the change is only "DONE for
+the implementation" — the actual `v0.1.0` release lands when the
+owner (a) runs `scripts/github_metadata.py --publish` from
+workspace-governance to publish the repository and set the real
+`[workspace.package] repository` URL, (b) adds the
+`PUBLICATION-APPROVED` marker file in a tracked commit, and
+(c) pushes the `v0.1.0` tag. The result of (c) is recorded in
+HANDOFF as release evidence at that time.
+
 ## Evidence boundary
 
-The 123 workspace tests, the 108-case × 9-family
+The 152 workspace tests, the 108-case × 9-family
 cross-repository fixture parity walk, the dependency-direction
 lockfile oracle (foundation crates plus the named-satellite
-allowlist), the `cargo clippy` clean run, and the strict `openspec
-validate` prove that the **wire-format and crate-shape** of the
-foundation plus the second-layer permission / audit / tenant helper
-surface plus the operational payloads plus the SMTP mailing
-satellite is consistent, machine-checkable, and provider-neutral.
-They do not prove that any consumer (`openaccounting`,
-`rust-ecommerce`, `hookit`, `openpanel`, `vowra`, or a future Rust
-service) has adopted these crates in production; that evidence will
-come from each consumer's own OpenSpec change.
+allowlist), the three new `registry-publication` unit tests
+that bind `.publish-order` to the manifest DAG, the
+`cargo clippy` clean run, and the strict `openspec validate`
+prove that the **wire-format and crate-shape** of the
+foundation plus the second-layer permission / audit / tenant
+helper surface plus the operational payloads plus the SMTP
+mailing satellite plus the AI capability satellite plus the
+crates.io publication pipeline is consistent,
+machine-checkable, and provider-neutral. They do not prove that
+any consumer (`openaccounting`, `rust-ecommerce`, `hookit`,
+`openpanel`, `vowra`, or a future Rust service) has adopted
+these crates in production; that evidence will come from each
+consumer's own OpenSpec change.
 
 In particular:
 
@@ -654,19 +893,25 @@ In particular:
   `PermissionEvaluator` trait. The reference impls are safe
   defaults and tests fixtures, not a recommended production
   policy.
+* The `registry-publication` pipeline is implemented and
+  machine-checked; the actual `cargo publish` release is BLOCKED
+  on P6 (real GitHub-publication precondition + owner approval).
+  No registry call is made until the owner pushes the
+  `v0.1.0` tag with the `PUBLICATION-APPROVED` marker tracked.
 
 ## Next action
 
 All OpenSpec changes are implemented, archived, and spec-synced
 (`openspec/specs/`: `rust-platform-foundation`,
 `rust-identity-audit-permission`, `rust-platform-consumer-baseline`,
-`readiness`, `platform-mailing`; `openspec/changes/` holds only
-`archive/`). No proposal remains open. The remaining work is
-repository hygiene on `main` — stale-doc sweep, `.gitignore`
-adaptation, and committing the pre-existing `.project.json`
-metadata modification — followed by per-consumer adoption changes
-(alltools, rust-ecommerce, openpanel) in their own repositories.
-Until then the foundation plus the second-layer permission / audit /
-tenant helpers plus the full operational payload surface plus the
-readiness docs plus the SMTP mailing satellite are the working
-state.
+`readiness`, `platform-mailing`, `platform-ai`,
+`rust-platform-publication`; `openspec/changes/` holds only
+`archive/`). The remaining work is the real crates.io release
+(visible in `docs/publication.md` §Pre-publish checklist) followed
+by per-consumer adoption changes (alltools, rust-ecommerce,
+openpanel) in their own repositories. Until the release lands the
+foundation plus the second-layer permission / audit / tenant
+helpers plus the full operational payload surface plus the
+readiness docs plus the SMTP mailing satellite plus the AI
+capability satellite plus the crates.io publication pipeline
+are the working state.
