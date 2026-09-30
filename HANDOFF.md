@@ -1,6 +1,6 @@
 # Rust Platform Libraries Handoff
 
-current_spec: rust-platform-foundation, rust-identity-audit-permission, rust-platform-consumer-baseline
+current_spec: rust-platform-foundation, rust-identity-audit-permission, rust-platform-consumer-baseline, readiness
 
 ## Current state
 
@@ -215,6 +215,78 @@ is claimed. The pre-existing `.project.json` modification and the
 `mailing-provider-adapters` / `post-mvp-readiness` proposals stay out of
 this change's commits.
 
+## Evidence — post-mvp-readiness (recorded 2026-09-30)
+
+The change is implemented, archived to
+`openspec/changes/archive/2026-09-30-post-mvp-readiness/`, and
+spec-synced into `openspec/specs/readiness/spec.md` (5 requirements /
+11 scenarios, plus a `## Purpose` section added at sync time because
+strict spec validation requires it). Implementation commit is
+`4ca307b`. It was selected as the next active change ahead of
+`mailing-provider-adapters` because it is docs-only and touches no
+shared arch-test/CI surface, so the mailing change lands later
+without a race.
+
+What was added (no `Cargo.toml`/`Cargo.lock`/`src/` edit, no new
+dependencies, no consumer or sibling edit):
+
+* `LICENSE` — verbatim Apache-2.0 text matching the workspace
+  `license = "Apache-2.0"` declaration (copied from the registry
+  copy of `serde`'s `LICENSE-APACHE`, not hand-typed).
+* `README.md` — per-crate matrix (purpose, production/test-only
+  posture, version, license, publish, MSRV, edition; every value
+  restated from the workspace manifests), usage pointer, license
+  pointer, and a path-dependency adoption guide that points to the
+  `rust-platform-consumer-baseline` spec/recipe instead of
+  re-declaring it.
+* `docs/usage.md` — one minimal example per production crate
+  (`platform-core`, `platform-contracts`, `platform-identity`,
+  `platform-audit`); every snippet is byte-identical to its
+  compiling `crates/*/examples/` file (verified by script, not by
+  eye).
+* `crates/platform-{core,contracts,identity,audit}/examples/*.rs`
+  — compile-checked examples using only each crate's existing
+  public API and existing dependencies (`cargo test --workspace`
+  builds them; all four were also executed and ran clean).
+  Test-only crates (`platform-testing`, `platform-arch-tests`) get
+  no examples per the design decision.
+
+Verification outputs (all fresh this session):
+
+* `cargo test --workspace` → **104 passed, 0 failed** (count
+  unchanged: examples build and run but add no test targets;
+  `platform-arch-tests` green, so no example pulled a forbidden
+  dependency into a production crate).
+* `cargo build --examples --workspace` → clean; all four examples
+  executed directly (`basics`, `envelope`, `subject_permission`,
+  `audit_event`) → ran OK.
+* `cargo fmt --all -- --check` → clean.
+* `cargo clippy --workspace --all-targets -- -D warnings` → clean.
+* `cargo deny check` → advisories ok, bans ok, licenses ok,
+  sources ok (one standing `license-not-encountered` warning for an
+  unmatched allowlist entry; warn, not deny).
+* `node scripts/check-openspec-change-names.mjs` → ok.
+* `openspec validate --changes --strict --no-interactive` → 1/1
+  passed (`mailing-provider-adapters` remains proposed).
+* `openspec validate --specs --strict --no-interactive` → 4/4
+  passed (new `spec/readiness` plus the 3 prior).
+* `git diff --check` → clean.
+* `git status` boundary: only `README.md`, `docs/`, `LICENSE`,
+  `crates/*/examples/`, and this change's own
+  `openspec/` paths appear. `Cargo.toml`, `Cargo.lock`,
+  `crates/*/src/**`, `platform-testing`, `platform-arch-tests`,
+  and every sibling repository are untouched. (The pre-existing
+  `.project.json` working-tree modification stays out of this
+  change's commits per the task caveats, as before.)
+
+Evidence boundary for this change: the matrix, examples, and
+license claim are proven consistent with the manifests and the
+compiler today. Nothing here proves registry publication
+(`publish = false` stays), consumer adoption beyond the
+path-dependency recipe, or that the snippets stay compiling under
+a future API — that is what `cargo test --workspace` guards on
+every run.
+
 ## Evidence boundary
 
 The 90 unit and integration tests, the 48-case cross-repository
@@ -257,11 +329,12 @@ In particular:
 
 ## Next action
 
-The consumer-conformance-matrix change is done (9 of 9 roadmap families
-at 108 parity cases). Two drafted proposals remain open in-tree and
-untouched by this change: `mailing-provider-adapters` and
-`post-mvp-readiness`. The repo owner selects which (if either) becomes
-the next active change and records it in the `current_spec` pointer
-above before implementation; until then the foundation plus the
-second-layer permission / audit / tenant helpers plus the full
-operational payload surface are the working state.
+The post-mvp-readiness change is done (matrix, compiling examples,
+license, adoption guide; spec `openspec/specs/readiness/spec.md`).
+One drafted proposal remains open in-tree and untouched by this
+change: `mailing-provider-adapters`. The repo owner selects whether
+it becomes the next active change and records it in the
+`current_spec` pointer above before implementation; until then the
+foundation plus the second-layer permission / audit / tenant helpers
+plus the full operational payload surface plus the readiness docs
+are the working state.
