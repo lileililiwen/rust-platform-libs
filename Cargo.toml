@@ -7,6 +7,7 @@ members = [
     "crates/platform-audit",
     "crates/platform-testing",
     "crates/platform-arch-tests",
+    "crates/platform-mailing",
     "tests/consumer-fixture",
 ]
 
@@ -44,6 +45,9 @@ too_many_arguments = "allow"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
+async-trait = "0.1"
+tokio = { version = "1", features = ["net", "time", "rt", "macros"] }
+lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "tokio1", "tokio1-rustls", "rustls-tls"] }
 time = { version = "0.3", default-features = false, features = ["std", "formatting", "parsing", "serde", "serde-well-known"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 jsonschema = { version = "0.57", default-features = false }

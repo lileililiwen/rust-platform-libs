@@ -4,9 +4,11 @@ Small, opt-in Rust crates for shared cross-cutting contracts used by multiple
 web, operator, and control-plane products. This is not an application
 framework and does not own product databases, users, migrations, or UI.
 
-The foundation and the second-layer identity/audit/permission surface are
-implemented and spec-synced. Axum, SQLx, cookie, OIDC, and provider adapters
-remain deferred until two real consumers demonstrate a compatible contract.
+The foundation, the second-layer identity/audit/permission surface, the
+operational payload surface, and the opt-in SMTP mailing satellite are
+implemented and spec-synced. Axum, SQLx, cookie, OIDC, HTTP mail
+provider adapters, and persistence remain deferred until real consumers
+demonstrate compatible contracts.
 See `HANDOFF.md` for the current state and the next OpenSpec change.
 
 ## Crate matrix
@@ -23,6 +25,7 @@ them so a consumer never has to open a manifest.
 | `platform-audit` | Normalized audit events, redaction policy, sink trait, and event producers | production | `0.1.0` | `Apache-2.0` (workspace) | `false` | `1.75` | `2021` |
 | `platform-testing` | Deterministic fakes, builders, and assertions for consumer test suites | test-only | `0.1.0` | `Apache-2.0` (workspace) | `false` | `1.75` | `2021` |
 | `platform-arch-tests` | Workspace-level dependency-direction tests | test-only | `0.1.0` | `Apache-2.0` (workspace) | `false` | `1.75` | `2021` |
+| `platform-mailing` | Provider-neutral mail send contract, opt-in lettre SMTP adapter (`smtp-lettre`), deterministic mock (`mock`) | satellite (production, opt-in; default features empty) | `0.1.0` | `Apache-2.0` (workspace) | `false` | `1.75` | `2021` |
 
 All crates are version `0.1.0` and `publish = false`: nothing here is
 published to a registry. Depending on a crate means a path or git
@@ -79,17 +82,32 @@ that recipe; follow it verbatim instead of forking it.
   `ScriptedPermissionEvaluator` test double. Production crates MUST NOT
   depend on this crate; `platform-arch-tests` enforces it.
 - `platform-arch-tests` — workspace-level dependency-direction tests that
-  read the `Cargo.lock` and assert no production crate (directly or
+  read the `Cargo.lock` and assert no foundation production crate (directly or
   transitively) depends on `axum`, `sqlx`, `cookie`, `jsonwebtoken`,
-  `openidconnect`, `oauth2`, `reqwest`, `tokio`, or `platform-testing`.
+  `openidconnect`, `oauth2`, `reqwest`, `lettre`, `tokio`, or `platform-testing`.
+  The named satellite `platform-mailing` alone may reach `lettre`/`tokio`
+  through an explicit allowlist; any other crate reaching them fails until a
+  policy change names it.
+- `platform-mailing` — provider-neutral `EmailAddress`, `EmailMessage`,
+  `Body`, `AttachmentRef`, `MailTransport`, `SendContext`,
+  `DeliveryReceipt`, and `MailingError` (every variant mapped onto a shipped
+  `platform-core` `ErrorCategory`, redacted display). The `smtp-lettre`
+  feature adds `SmtpTransportConfig` (loopback-only `Security::None`,
+  `Secret`-wrapped credentials) and `LettreSmtpTransport` (rustls only, no
+  native-tls); the `mock` feature adds the scriptable `MockTransport` so
+  production crates never touch `platform-testing`. No retry, queue,
+  persistence, templates, or HTTP provider adapters.
 
 ## Deferred
 
 Axum, SQLx, cookie, OIDC, universal login pages, dashboards, product
 entities, migrations, provider credentials, billing semantics, and
-deployment automation remain owned by consumers. Provider adapters
-land after at least two consumers demonstrate a compatible contract;
-persistence adapters land after schema and concurrency evidence exists.
+deployment automation remain owned by consumers. HTTP mail provider
+adapters (Resend/Brevo: one consumer — the two-consumer rule says wait),
+router/quota/rate-limit, templates, DKIM/IMAP, and persistence adapters
+land after compatible-contract evidence exists and an explicit OpenSpec
+change records the decision. SMTP delivery is the one shipped satellite;
+the foundation crates stay provider-neutral behind the trait surface.
 
 ## Verification
 

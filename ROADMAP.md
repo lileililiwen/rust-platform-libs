@@ -2,9 +2,9 @@
 
 The roadmap is the sequence of OpenSpec changes that build out the
 foundation plus the application-level helpers every consumer needs.
-Two changes are done and archived; the next change brings the
-in-tree fixture parity walker from 4 of 9 contract families toward
-the full set.
+The foundation, identity/audit/permission, consumer-baseline,
+conformance-matrix, readiness, and mailing changes are done and
+archived; the specs under `openspec/specs/` are the working state.
 
 ## Dependency order
 
@@ -48,6 +48,17 @@ the full set.
    `-D warnings`, `cargo deny check`, tests, and
    `scripts/conformance.sh`, plus the `tests/consumer-fixture`
    in-workspace consumer. `publish = false` unchanged.
+4c. `mailing-provider-adapters` — **done** (archive
+    `openspec/changes/archive/2026-09-30-mailing-provider-adapters/`;
+    spec `openspec/specs/platform-mailing/spec.md`). New satellite
+    crate `platform-mailing`: provider-neutral send contract
+    (MAIL-001), opt-in `smtp-lettre` adapter with rustls only
+    (MAIL-002), deterministic in-crate `mock` transport (MAIL-003),
+    and the named-satellite dependency-direction allowlist in
+    `platform-arch-tests` (MAIL-004). HTTP API provider adapters
+    (Resend/Brevo) stay deferred per the two-consumer rule; router,
+    quota, templates, DKIM/IMAP, and consumer migrations are each
+    their own future change.
 5. `axum-web-adapters` — deferred. Opt-in web adapters land only
    after at least two real consumers agree on the contracts and
    an explicit OpenSpec change records the decision.

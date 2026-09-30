@@ -1,6 +1,10 @@
-//! Top-level integration test that runs the architecture checks.
+//! Top-level integration test that runs the architecture checks
+//! against the real manifests and lockfile.
 
-use platform_arch_tests::{Lockfile, ParsedCrate, PRODUCTION_CRATES, TEST_ONLY_CRATE};
+use platform_arch_tests::{
+    check_crate_policy, Lockfile, ParsedCrate, PRODUCTION_CRATES, SATELLITE_ALLOWLIST,
+    TEST_ONLY_CRATE,
+};
 
 #[test]
 fn production_crates_listed() {
@@ -66,6 +70,12 @@ fn lockfile_transitive_closure_is_clean() {
     };
     for name in PRODUCTION_CRATES {
         let closure = lockfile.transitive_closure(&[name.to_string()]);
+        let violations = check_crate_policy(name, &closure);
+        assert!(
+            violations.is_empty(),
+            "dependency-direction violations:\n{}",
+            violations.join("\n")
+        );
         for forbidden in &[
             "axum",
             "axum-core",
@@ -83,6 +93,7 @@ fn lockfile_transitive_closure_is_clean() {
             "openidconnect",
             "oauth2",
             "reqwest",
+            "lettre",
             "tokio",
         ] {
             assert!(
@@ -90,6 +101,50 @@ fn lockfile_transitive_closure_is_clean() {
                 "production crate {name} transitively depends on {forbidden:?}"
             );
         }
+    }
+    // The named satellites comply through the same pure rule: only
+    // their allowlisted leaves may appear.
+    for (satellite, _) in SATELLITE_ALLOWLIST {
+        let closure = lockfile.transitive_closure(&[satellite.to_string()]);
+        let violations = check_crate_policy(satellite, &closure);
+        assert!(
+            violations.is_empty(),
+            "dependency-direction violations:\n{}",
+            violations.join("\n")
+        );
+    }
+}
+
+#[test]
+fn only_allowlisted_satellites_directly_depend_on_lettre() {
+    let ws = platform_arch_tests::workspace_root();
+    let manifests = read_manifests(&ws);
+    for manifest in &manifests {
+        let reaches_lettre = manifest.dependencies.contains("lettre")
+            || manifest.dev_dependencies.contains("lettre");
+        if !reaches_lettre {
+            continue;
+        }
+        let allowed = SATELLITE_ALLOWLIST
+            .iter()
+            .any(|(name, _)| *name == manifest.name);
+        assert!(
+            allowed,
+            "{} reaches lettre without a satellite allowlist entry",
+            manifest.name
+        );
+    }
+    // The allowlist names a crate that actually exists and actually
+    // uses its allowance, so the rule cannot rot into a vacuous pass.
+    for (satellite, _) in SATELLITE_ALLOWLIST {
+        let manifest = manifests
+            .iter()
+            .find(|m| m.name == *satellite)
+            .unwrap_or_else(|| panic!("allowlisted satellite {satellite} missing"));
+        assert!(
+            manifest.dependencies.contains("lettre"),
+            "allowlisted satellite {satellite} no longer uses lettre"
+        );
     }
 }
 

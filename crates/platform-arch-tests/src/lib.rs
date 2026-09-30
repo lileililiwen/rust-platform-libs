@@ -5,9 +5,18 @@
 //!
 //! * Foundation **production** crates MUST NOT depend on Axum, SQLx,
 //!   database drivers, cookie/session implementations, OIDC/JWT
-//!   providers, or any product crate.
+//!   providers, lettre, tokio, or any product crate.
 //! * Foundation **production** crates MUST NOT depend on the
 //!   test-only `platform-testing` crate.
+//! * The named satellite `platform-mailing` alone may reach `lettre`
+//!   and its transitive `tokio` (see [`SATELLITE_ALLOWLIST`]); any
+//!   other crate reaching them is denied until an explicit policy
+//!   change names it.
+//!
+//! The rule itself is the pure function [`check_crate_policy`] over
+//! `(crate, transitive-graph)` so unit tests can exercise violations
+//! with synthesized graphs. The tests below apply it to the real
+//! manifests and lockfile.
 //!
 //! The test approach is intentionally lightweight: we read the
 //! workspace's own `Cargo.toml` files, the `Cargo.lock` for the
@@ -26,6 +35,11 @@ use std::path::{Path, PathBuf};
 pub const TEST_ONLY_CRATE: &str = "platform-testing";
 
 /// Workspace member names that are considered production crates.
+///
+/// The four foundation crates. Satellite crates such as
+/// `platform-mailing` are production code too, but they live under
+/// the named-satellite allowlist ([`SATELLITE_ALLOWLIST`]) instead of
+/// this list so the foundation rule stays frozen.
 pub const PRODUCTION_CRATES: &[&str] = &[
     "platform-core",
     "platform-contracts",
@@ -33,9 +47,20 @@ pub const PRODUCTION_CRATES: &[&str] = &[
     "platform-audit",
 ];
 
+/// Named satellite crates and the extra dependencies each one is
+/// explicitly allowed to reach. Today the only satellite is
+/// `platform-mailing` (SMTP mail delivery, extracted after three
+/// consumers demonstrated a compatible lettre contract). A crate not
+/// named here that reaches `lettre` or `tokio` is a violation until
+/// an explicit policy change names it.
+pub const SATELLITE_ALLOWLIST: &[(&str, &[&str])] = &[("platform-mailing", &["lettre", "tokio"])];
+
 /// Forbidden dependency crate names. A direct or transitive
-/// dependency on any of these in a production crate is a violation
-/// of the foundation's provider-neutrality rule.
+/// dependency on any of these in a foundation production crate is a
+/// violation of the provider-neutrality rule. `lettre` is forbidden
+/// to the foundation even though the named satellite
+/// `platform-mailing` may use it; [`check_crate_policy`] applies the
+/// allowlist per crate.
 pub const FORBIDDEN_DEPS: &[&str] = &[
     "axum",
     "axum-extra",
@@ -55,13 +80,16 @@ pub const FORBIDDEN_DEPS: &[&str] = &[
     "openidconnect",
     "oauth2",
     "reqwest",
-    "tokio", // foundation is sync-only; async adapters live outside
+    "lettre", // satellite-only; see SATELLITE_ALLOWLIST
+    "tokio",  // foundation is sync-only; async adapters live outside
 ];
 
 /// Direct forbidden deps that are checked by name in each
 /// production crate's `Cargo.toml` `dependencies` and
 /// `dev-dependencies` tables. These are listed separately from
 /// [`FORBIDDEN_DEPS`] so the failure message can be specific.
+/// `lettre` is direct-forbidden to the foundation; only the named
+/// satellite `platform-mailing` may declare it.
 pub const DIRECT_FORBIDDEN_DEPS: &[&str] = &[
     "axum",
     "sqlx",
@@ -71,8 +99,70 @@ pub const DIRECT_FORBIDDEN_DEPS: &[&str] = &[
     "openidconnect",
     "oauth2",
     "reqwest",
+    "lettre",
     "tokio",
 ];
+
+/// Pure dependency-direction policy over one crate and its
+/// transitive dependency names. Returns one message per violation,
+/// empty when the crate complies:
+///
+/// * a foundation [`PRODUCTION_CRATES`] crate MUST NOT reach any
+///   [`FORBIDDEN_DEPS`] entry or the [`TEST_ONLY_CRATE`];
+/// * a [`SATELLITE_ALLOWLIST`] crate may reach exactly its listed
+///   allowances (plus anything not forbidden) but MUST NOT reach
+///   any other [`FORBIDDEN_DEPS`] entry or the [`TEST_ONLY_CRATE`];
+/// * any other crate that reaches `lettre`/`tokio` is an unknown
+///   satellite and is denied until an explicit policy change names
+///   it.
+///
+/// Pure over `(crate, graph)` so a synthesized graph can exercise a
+/// violation that does not exist in the real lockfile.
+#[must_use]
+pub fn check_crate_policy(crate_name: &str, transitive: &BTreeSet<String>) -> Vec<String> {
+    let mut violations = Vec::new();
+    if transitive.contains(TEST_ONLY_CRATE) {
+        violations.push(format!(
+            "{crate_name} reaches test-only crate {TEST_ONLY_CRATE:?}"
+        ));
+    }
+    if PRODUCTION_CRATES.contains(&crate_name) {
+        for forbidden in FORBIDDEN_DEPS {
+            if transitive.contains(*forbidden) {
+                violations.push(format!(
+                    "{crate_name} reaches forbidden dependency {forbidden:?}"
+                ));
+            }
+        }
+        return violations;
+    }
+    if let Some((_, allowed)) = SATELLITE_ALLOWLIST
+        .iter()
+        .find(|(name, _)| *name == crate_name)
+    {
+        for forbidden in FORBIDDEN_DEPS {
+            if allowed.contains(forbidden) {
+                continue;
+            }
+            if transitive.contains(*forbidden) {
+                violations.push(format!(
+                    "{crate_name} reaches forbidden dependency {forbidden:?} \
+                     outside its satellite allowlist"
+                ));
+            }
+        }
+        return violations;
+    }
+    // Unknown crate: only the satellite-gated leaves are policed.
+    for gated in ["lettre", "tokio"] {
+        if transitive.contains(gated) {
+            violations.push(format!(
+                "{crate_name} reaches {gated:?} without a satellite allowlist entry"
+            ));
+        }
+    }
+    violations
+}
 
 /// Locate the workspace root by walking up from `CARGO_MANIFEST_DIR`.
 pub fn workspace_root() -> PathBuf {
@@ -285,6 +375,55 @@ mod tests {
     }
 
     #[test]
+    fn satellite_allowlist_permits_only_platform_mailing() {
+        // Compliant: the named satellite reaches exactly its
+        // allowances.
+        let mailing: BTreeSet<String> = ["lettre", "tokio", "platform-core"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert!(
+            check_crate_policy("platform-mailing", &mailing).is_empty(),
+            "named satellite with its allowances must pass"
+        );
+        // The satellite reaching anything else forbidden still fails.
+        let mut overreach = mailing.clone();
+        overreach.insert("axum".to_string());
+        let violations = check_crate_policy("platform-mailing", &overreach);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].contains("platform-mailing"));
+        assert!(violations[0].contains("axum"));
+    }
+
+    #[test]
+    fn foundation_violation_is_reported_by_crate_and_dep() {
+        // Synthesized graph: lettre attached to a foundation crate.
+        // The real lockfile walk alone cannot exercise a violation
+        // that does not exist, so the pure function is tested with a
+        // graph that does.
+        let mut graph = BTreeSet::new();
+        graph.insert("lettre".to_string());
+        graph.insert("serde".to_string());
+        let violations = check_crate_policy("platform-identity", &graph);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].contains("platform-identity"));
+        assert!(violations[0].contains("lettre"));
+    }
+
+    #[test]
+    fn unknown_satellite_reaching_lettre_is_denied() {
+        let mut graph = BTreeSet::new();
+        graph.insert("lettre".to_string());
+        let violations = check_crate_policy("some-new-crate", &graph);
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].contains("some-new-crate"));
+        assert!(violations[0].contains("lettre"));
+
+        let clean = BTreeSet::new();
+        assert!(check_crate_policy("some-new-crate", &clean).is_empty());
+    }
+
+    #[test]
     fn lockfile_resolves_and_does_not_contain_forbidden() {
         // The lockfile may be missing if the workspace has never been
         // built. In that case the test cannot enforce a transitive
@@ -296,18 +435,22 @@ mod tests {
         };
         for name in PRODUCTION_CRATES {
             let transitive = lockfile.transitive_closure(&[(*name).to_string()]);
-            for forbidden in FORBIDDEN_DEPS {
-                if transitive.contains(*forbidden) {
-                    panic!(
-                        "production crate {name} transitively depends on forbidden crate {forbidden:?}"
-                    );
-                }
-            }
-            if transitive.contains(TEST_ONLY_CRATE) && *name != TEST_ONLY_CRATE {
-                panic!(
-                    "production crate {name} transitively depends on test-only crate {TEST_ONLY_CRATE:?}"
-                );
-            }
+            let violations = check_crate_policy(name, &transitive);
+            assert!(
+                violations.is_empty(),
+                "dependency-direction violations:\n{}",
+                violations.join("\n")
+            );
+        }
+        // The named satellite complies through the same pure rule.
+        for (satellite, _) in SATELLITE_ALLOWLIST {
+            let transitive = lockfile.transitive_closure(&[(*satellite).to_string()]);
+            let violations = check_crate_policy(satellite, &transitive);
+            assert!(
+                violations.is_empty(),
+                "dependency-direction violations:\n{}",
+                violations.join("\n")
+            );
         }
     }
 }
