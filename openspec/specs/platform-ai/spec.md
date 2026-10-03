@@ -1,7 +1,8 @@
 # platform-ai Specification
 
 ## Purpose
-TBD - created by archiving change ai-provider-adapters. Update Purpose after archive.
+
+Two consumer repositories already implement provider-client seams for LLM calls. `alltools-platform` carries five independent provider implementations (`rust/packages/at-domain-agent/src/providers/` — openai, deepseek, zhipu, ollama, local) whose remote three differ only by `base_url` and model id (evidence: `openai.rs:217` builds `{base_url}/v1/chat/completions` for every OpenAI-compatible vendor), plus a provider-neutral lifecycle port in `at-domain-ai/src/domain/invocation.rs`; `openTeacherKit` owns `crates/otk-ai/src/provider.rs` with a `ProviderDeclaration` capability model (tasks, retention, failure kinds) currently backed only by scripted adapters. `platform-mailing` established the satellite-crate and allowlist pattern this change extends. The recorded two-consumer decision for the AI seam is made here, per the repository deferral policy.
 ## Requirements
 ### Requirement: A provider-neutral AI chat contract SHALL exist (AI-001)
 
