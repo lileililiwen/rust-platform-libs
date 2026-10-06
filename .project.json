@@ -15,5 +15,47 @@
     "deployable": false,
     "jenkins_job": null,
     "compose_file": null
+  },
+  "discoverability": {
+    "description": "Small, opt-in Rust crates for shared cross-cutting contracts used by multiple web, operator, and control-plane products. Foundation, identity, audit, mailing, and AI capability crates.",
+    "keywords": [
+      "rust",
+      "shared library",
+      "platform",
+      "crates",
+      "opt in",
+      "provider neutral",
+      "identity contracts"
+    ],
+    "topics": [
+      "rust",
+      "shared-library",
+      "platform",
+      "crates",
+      "opt-in",
+      "apache-2-0",
+      "architecture-testing",
+      "provider-neutral",
+      "identity",
+      "audit",
+      "ai"
+    ],
+    "audience": [
+      "Rust product teams",
+      "platform engineers"
+    ],
+    "use_cases": [
+      "adopt opt-in Rust crates for identity, audit, mailing, AI",
+      "share provider-neutral HTTP adapters for mail and AI",
+      "enforce architecture direction with workspace-level tests"
+    ],
+    "search_phrases": [
+      "opt-in Rust crates for shared contracts",
+      "Rust representations of language-neutral schemas",
+      "provider-neutral identity audit and AI contracts"
+    ],
+    "homepage": "https://github.com/lileililiwen/rust-platform-libs",
+    "license_spdx": "Apache-2.0",
+    "visibility": "private"
   }
 }
