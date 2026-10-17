@@ -10,6 +10,7 @@ checks:
   security: true
   openspec_names: true
   declared-verification: true
+  governance-quality: true
 blocking:
   - FAIL
   - REVIEW_REQUIRED
@@ -30,3 +31,4 @@ commands:
   tests: 'cargo test --workspace'
   security: 'cargo audit'
   openspec_names: 'node scripts/check-openspec-change-names.mjs'
+  governance-quality: 'python3 ../workspace-governance/scripts/workspace_check.py --root .. --project rust-platform-libs --json'
